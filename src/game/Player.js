@@ -23,6 +23,7 @@ export class Player {
     this.slowTimer = 0           // remaining duration of slow effect
     this.phaseWalkTimer = 0      // remaining duration of Phase Walk buff
     this.dashTimer = 0           // remaining duration of Dash movement
+    this.arcaneOverloadTimer = 0 // remaining duration of Arcane Overload buff
 
     this.spellEchoActive = false // true when Spell Echo buff is active
 
@@ -110,8 +111,8 @@ export class Player {
   _clampToBounds() {
     const half = this.size / 2
     // Keep physics in float; rounding happens at render time
-    this.position.x = Math.max(ARENA.LEFT + half, Math.min(ARENA.RIGHT  - half, this.position.x))
-    this.position.y = Math.max(ARENA.TOP  + half, Math.min(ARENA.BOTTOM - half, this.position.y))
+    this.position.x = Math.max(ARENA.LEFT + half, Math.min(ARENA.RIGHT - half, this.position.x))
+    this.position.y = Math.max(ARENA.TOP + half, Math.min(ARENA.BOTTOM - half, this.position.y))
   }
 
   _regenMana(dt) {
@@ -146,13 +147,16 @@ export class Player {
     if (this.phaseWalkTimer > 0) {
       this.phaseWalkTimer = Math.max(0, this.phaseWalkTimer - dt)
     }
+    if (this.arcaneOverloadTimer > 0) {
+      this.arcaneOverloadTimer = Math.max(0, this.arcaneOverloadTimer - dt)
+    }
     this._recomputeSpeedMultiplier()
   }
 
   _recomputeSpeedMultiplier() {
     let mult = 1.0
     if (this.phaseWalkTimer > 0) mult *= 1.5
-    if (this.slowTimer > 0)      mult *= 0.85
+    if (this.slowTimer > 0) mult *= 0.85
     this.speedMultiplier = mult
   }
 
@@ -167,6 +171,14 @@ export class Player {
   applyPhaseWalk(duration) {
     this.phaseWalkTimer = duration
     this._recomputeSpeedMultiplier()
+  }
+
+  applyArcaneOverload(duration) {
+    this.arcaneOverloadTimer = duration
+  }
+
+  get arcaneOverloadActive() {
+    return this.arcaneOverloadTimer > 0
   }
 
   startDash(duration) {
@@ -185,7 +197,6 @@ export class Player {
     const id = spell.definition.id
     if ((this.cooldowns[id] ?? 0) > 0) return false
 
-    // TODO: Check blood lance still cost mana (should only cost HP)
     // Blood Lance: cannot cast if HP ≤ hpCost
     const hpCost = spell.definition.hpCost ?? 0
     if (hpCost > 0 && this.hp <= hpCost) return false
