@@ -157,6 +157,7 @@ export const MANA_SURGE = {
   tags: ['instant', 'utility'],
 }
 
+// TODO: Add a second cast animation to show the echo
 export const SPELL_ECHO = {
   id: 'spell_echo',
   name: 'Spell Echo',
