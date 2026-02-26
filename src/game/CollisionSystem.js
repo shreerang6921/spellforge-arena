@@ -38,6 +38,7 @@ export function runCollision(projectiles, players) {
       const playerSize = { w: player.size, h: player.size }
       if (isColliding(proj.position, proj.size, player.position, playerSize)) {
         player.takeDamage(proj.damage)
+        if (proj.onHit) proj.onHit(player)
         proj.active = false
         break
       }

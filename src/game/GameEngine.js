@@ -5,7 +5,7 @@ import { Projectile } from './Projectile.js'
 import { runCollision } from './CollisionSystem.js'
 import { computeAimDirection } from './AimAssist.js'
 import { SpellInstance } from './spells/SpellInstance.js'
-import { FIREBALL } from './spells/SpellDefinitions.js'
+import { FIREBALL, ICE_SHARD } from './spells/SpellDefinitions.js'
 
 export class GameEngine {
   constructor(canvas) {
@@ -29,8 +29,9 @@ export class GameEngine {
     this.player = new Player({ x: 80,  y: 90, color: COLORS.PLAYER1, isBot: false })
     this.bot    = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true  })
 
-    // Temporary deck for Phase 4 — will be replaced by Deck Forge in Phase 10
+    // Temporary deck — will be replaced by Deck Forge in Phase 10
     this.player.deck[0] = new SpellInstance(FIREBALL)
+    this.player.deck[1] = new SpellInstance(ICE_SHARD)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
   }
@@ -160,6 +161,11 @@ export class GameEngine {
     const { spell, direction } = completedCast
     const def = spell.definition
     if (def.behaviorType !== 'projectile') return null
+
+    const onHit = def.slowDuration
+      ? (target) => target.applySlowEffect(def.slowDuration)
+      : null
+
     return new Projectile({
       x: owner.position.x,
       y: owner.position.y,
@@ -171,6 +177,7 @@ export class GameEngine {
       type: def.id,
       lifetime: def.projectileLifetime,
       color: def.color,
+      onHit,
     })
   }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GameEngine } from '../game/GameEngine.js'
 import { SpellInstance } from '../game/spells/SpellInstance.js'
-import { FIREBALL } from '../game/spells/SpellDefinitions.js'
+import { FIREBALL, ICE_SHARD } from '../game/spells/SpellDefinitions.js'
 import { RESOLUTION_W, RESOLUTION_H } from '../config/constants.js'
 
 function makeMockCtx() {
@@ -355,5 +355,103 @@ describe('GameEngine — _spawnSpellProjectile', () => {
     })
     const result = engine._spawnSpellProjectile({ spell: buffSpell, direction: { x: 1, y: 0 } }, engine.player)
     expect(result).toBeNull()
+  })
+
+  it('returns null for projectile with no slowDuration (onHit is null)', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(FIREBALL)
+    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    expect(proj.onHit).toBeNull()
+  })
+
+  it('attaches onHit callback for Ice Shard projectile', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ICE_SHARD)
+    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    expect(typeof proj.onHit).toBe('function')
+  })
+
+  it('Ice Shard onHit applies slow to the target', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ICE_SHARD)
+    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    proj.onHit(engine.bot)
+    expect(engine.bot.slowTimer).toBe(ICE_SHARD.slowDuration)
+    expect(engine.bot.speedMultiplier).toBeCloseTo(0.85)
+  })
+})
+
+describe('GameEngine — Ice Shard spell casting', () => {
+  function makeEngineWithIceShard() {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.deck[1] = new SpellInstance(ICE_SHARD)
+    return engine
+  }
+
+  it('pressing spell slot 2 starts a pending cast', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    expect(engine.player.pendingCast).not.toBeNull()
+  })
+
+  it('spawns a projectile after cast time elapses', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[1] = false
+    engine.update(0.4)  // > 0.2s cast time
+    expect(engine.projectiles.length).toBe(1)
+  })
+
+  it('Ice Shard projectile has correct damage', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[1] = false
+    engine.update(0.4)
+    expect(engine.projectiles[0].damage).toBe(ICE_SHARD.baseDamage)
+  })
+
+  it('Ice Shard projectile has correct color', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[1] = false
+    engine.update(0.4)
+    expect(engine.projectiles[0].color).toBe(ICE_SHARD.color)
+  })
+
+  it('Ice Shard projectile has correct size', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[1] = false
+    engine.update(0.4)
+    expect(engine.projectiles[0].size).toEqual({ w: ICE_SHARD.projectileSize, h: ICE_SHARD.projectileSize })
+  })
+
+  it('Ice Shard projectile has an onHit callback', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[1] = false
+    engine.update(0.4)
+    expect(typeof engine.projectiles[0].onHit).toBe('function')
+  })
+
+  it('Ice Shard deducts mana on cast', () => {
+    const engine = makeEngineWithIceShard()
+    engine.player.input.spellSlots[1] = true
+    engine.update(0.016)
+    expect(engine.player.mana).toBeLessThan(100)
   })
 })

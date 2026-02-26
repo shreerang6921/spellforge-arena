@@ -13,3 +13,21 @@ export const FIREBALL = {
   isUltimate: false,
   tags: ['projectile', 'damage'],
 }
+
+export const ICE_SHARD = {
+  id: 'ice_shard',
+  name: 'Ice Shard',
+  baseDamage: 15,
+  manaCost: 12,
+  castTime: 0.2,
+  cooldown: 0,
+  behaviorType: 'projectile',
+  projectileSpeed: 220,
+  projectileSize: 4,
+  projectileLifetime: 3,
+  color: '#00ffff',
+  isUltimate: false,
+  tags: ['projectile', 'damage'],
+  slowDuration: 1.5,
+  slowFactor: 0.15,
+}

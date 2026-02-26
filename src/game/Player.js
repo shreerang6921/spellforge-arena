@@ -20,6 +20,7 @@ export class Player {
     this.size = PLAYER.SIZE
 
     this.speedMultiplier = 1.0   // modified by buffs (Phase Walk etc.)
+    this.slowTimer = 0           // remaining duration of slow effect
 
     this.deck = []
     this.cooldowns = {}
@@ -85,6 +86,7 @@ export class Player {
     this._applyMovement(dt)
     this._regenMana(dt)
     this._tickCooldowns(dt)
+    this._tickStatusEffects(dt)
   }
 
   _applyMovement(dt) {
@@ -121,6 +123,21 @@ export class Player {
     for (const id in this.cooldowns) {
       if (this.cooldowns[id] > 0) {
         this.cooldowns[id] = Math.max(0, this.cooldowns[id] - dt)
+      }
+    }
+  }
+
+  applySlowEffect(duration) {
+    // No stacking — refresh timer, set speedMultiplier
+    this.slowTimer = duration
+    this.speedMultiplier = 0.85
+  }
+
+  _tickStatusEffects(dt) {
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt)
+      if (this.slowTimer === 0) {
+        this.speedMultiplier = 1.0
       }
     }
   }
