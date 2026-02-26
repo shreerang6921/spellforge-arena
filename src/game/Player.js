@@ -28,6 +28,8 @@ export class Player {
     this.isBot = isBot
 
     this.attackCooldown = 0
+    this.pendingCast = null    // { spell, direction, timeRemaining }
+    this.completedCast = null  // { spell, direction } — consumed by GameEngine each frame
 
     // Input state (set externally by InputHandler or BotAI)
     this.input = {
@@ -36,6 +38,7 @@ export class Player {
       left: false,
       right: false,
       attack: false,
+      spellSlots: [false, false, false, false, false, false, false, false],
     }
 
     // State machine
@@ -62,6 +65,9 @@ export class Player {
 
   update(dt) {
     if (this.isDead) return
+
+    this.completedCast = null     // clear previous frame's completed cast
+    this._tickPendingCast(dt)     // may resolve pendingCast → sets completedCast
 
     // Determine state from input
     const moving = this.input.up || this.input.down || this.input.left || this.input.right
@@ -98,6 +104,16 @@ export class Player {
     this.mana = Math.min(this.maxMana, this.mana + this.manaRegen * dt)
   }
 
+  _tickPendingCast(dt) {
+    if (!this.pendingCast) return
+    this.pendingCast.timeRemaining -= dt
+    if (this.pendingCast.timeRemaining <= 0) {
+      this.completedCast = { spell: this.pendingCast.spell, direction: this.pendingCast.direction }
+      this.pendingCast = null
+      this.setState('idle')
+    }
+  }
+
   _tickCooldowns(dt) {
     if (this.attackCooldown > 0) {
       this.attackCooldown = Math.max(0, this.attackCooldown - dt)
@@ -109,8 +125,9 @@ export class Player {
     }
   }
 
-  castSpell(slotIndex) {
+  castSpell(slotIndex, direction = { x: 1, y: 0 }) {
     if (this.isDead) return false
+    if (this.pendingCast) return false
     const spell = this.deck[slotIndex]
     if (!spell) return false
     if (this.mana < spell.computedCost) return false
@@ -119,6 +136,13 @@ export class Player {
 
     this.mana -= spell.computedCost
     this.cooldowns[id] = spell.computedCooldown
+
+    if (spell.computedCastTime > 0) {
+      this.pendingCast = { spell, direction, timeRemaining: spell.computedCastTime }
+      this.setState('cast')
+    } else {
+      this.completedCast = { spell, direction }
+    }
     return true
   }
 
@@ -137,6 +161,7 @@ export class Player {
       size: BASIC_ATTACK.SIZE,
       type: 'basic',
       lifetime: BASIC_ATTACK.LIFETIME,
+      color: BASIC_ATTACK.COLOR,
     })
   }
 

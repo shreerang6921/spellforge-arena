@@ -1,5 +1,5 @@
 export class Projectile {
-  constructor({ x, y, vx, vy, damage, owner, size, type, lifetime = 2 }) {
+  constructor({ x, y, vx, vy, damage, owner, size, type, lifetime = 2, color = '#ffffff' }) {
     this.position = { x, y }
     this.velocity = { x: vx, y: vy }
     this.damage = damage
@@ -7,6 +7,7 @@ export class Projectile {
     this.size = { w: size, h: size }
     this.type = type
     this.lifetime = lifetime
+    this.color = color
     this.active = true
   }
 

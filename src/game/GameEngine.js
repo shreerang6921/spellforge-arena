@@ -1,8 +1,11 @@
 import { RESOLUTION_W, RESOLUTION_H, COLORS, ARENA } from '../config/constants.js'
 import { Player } from './Player.js'
 import { InputHandler } from './InputHandler.js'
+import { Projectile } from './Projectile.js'
 import { runCollision } from './CollisionSystem.js'
 import { computeAimDirection } from './AimAssist.js'
+import { SpellInstance } from './spells/SpellInstance.js'
+import { FIREBALL } from './spells/SpellDefinitions.js'
 
 export class GameEngine {
   constructor(canvas) {
@@ -25,6 +28,9 @@ export class GameEngine {
   init() {
     this.player = new Player({ x: 80,  y: 90, color: COLORS.PLAYER1, isBot: false })
     this.bot    = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true  })
+
+    // Temporary deck for Phase 4 — will be replaced by Deck Forge in Phase 10
+    this.player.deck[0] = new SpellInstance(FIREBALL)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
   }
@@ -63,15 +69,35 @@ export class GameEngine {
     this.player.update(dt)
     this.bot.update(dt)
 
-    // Handle player basic attack input
-    if (this.inputHandler && this.player.input.attack) {
+    if (this.inputHandler) {
       const dir = computeAimDirection(
         this.player.position,
         this.inputHandler.mouse,
         this.bot.isDead ? null : this.bot.position
       )
-      const proj = this.player.tryBasicAttack(dir)
+
+      // Basic attack
+      if (this.player.input.attack) {
+        const proj = this.player.tryBasicAttack(dir)
+        if (proj) this.projectiles.push(proj)
+      }
+
+      // Spell slots — only one slot per frame, skip if already casting
+      if (!this.player.pendingCast) {
+        for (let i = 0; i < this.player.input.spellSlots.length; i++) {
+          if (this.player.input.spellSlots[i]) {
+            this.player.castSpell(i, dir)
+            break
+          }
+        }
+      }
+    }
+
+    // Spawn projectile when a cast completes
+    if (this.player.completedCast) {
+      const proj = this._spawnSpellProjectile(this.player.completedCast, this.player)
       if (proj) this.projectiles.push(proj)
+      this.player.completedCast = null
     }
 
     // Update all projectiles
@@ -94,6 +120,7 @@ export class GameEngine {
       this._drawProjectile(ctx, proj)
     }
     this._drawHUD(ctx)
+    this._drawDeck(ctx)
   }
 
   _drawArena(ctx) {
@@ -129,11 +156,74 @@ export class GameEngine {
     this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana     / this.bot.maxMana,     COLORS.MANA_BAR, COLORS.MANA_BG)
   }
 
+  _spawnSpellProjectile(completedCast, owner) {
+    const { spell, direction } = completedCast
+    const def = spell.definition
+    if (def.behaviorType !== 'projectile') return null
+    return new Projectile({
+      x: owner.position.x,
+      y: owner.position.y,
+      vx: direction.x * def.projectileSpeed,
+      vy: direction.y * def.projectileSpeed,
+      damage: spell.computedDamage,
+      owner,
+      size: def.projectileSize,
+      type: def.id,
+      lifetime: def.projectileLifetime,
+      color: def.color,
+    })
+  }
+
   _drawProjectile(ctx, proj) {
-    ctx.fillStyle = COLORS.PROJECTILE_BASIC
+    ctx.fillStyle = proj.color
     const x = Math.round(proj.position.x - proj.size.w / 2)
     const y = Math.round(proj.position.y - proj.size.h / 2)
     ctx.fillRect(x, y, proj.size.w, proj.size.h)
+  }
+
+  _drawDeck(ctx) {
+    const SLOT  = 14
+    const GAP   = 2
+    const SLOTS = 8
+    const totalW = SLOTS * SLOT + (SLOTS - 1) * GAP
+    const startX = Math.floor((RESOLUTION_W - totalW) / 2)
+    const y = RESOLUTION_H - SLOT - 2   // 2px above canvas bottom
+
+    for (let i = 0; i < SLOTS; i++) {
+      const x = startX + i * (SLOT + GAP)
+      const spell = this.player.deck[i]
+
+      // Slot background
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillRect(x, y, SLOT, SLOT)
+
+      if (spell) {
+        // Spell colour fill (inner, 1px inset)
+        ctx.fillStyle = spell.definition.color
+        ctx.fillRect(x + 1, y + 1, SLOT - 2, SLOT - 2)
+
+        // Cooldown dark overlay (top-down wipe)
+        const cd    = this.player.cooldowns[spell.definition.id] ?? 0
+        const total = spell.computedCooldown
+        if (cd > 0 && total > 0) {
+          const ratio = cd / total
+          ctx.fillStyle = 'rgba(0,0,0,0.75)'
+          ctx.fillRect(x + 1, y + 1, SLOT - 2, Math.round((SLOT - 2) * ratio))
+        }
+
+        // White border while this slot is being cast
+        if (this.player.pendingCast?.spell === spell) {
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = 1
+          ctx.strokeRect(x + 0.5, y + 0.5, SLOT - 1, SLOT - 1)
+        }
+      }
+
+      // Slot number label
+      ctx.fillStyle = spell ? '#fff' : '#555'
+      ctx.font = '5px monospace'
+      ctx.fillText(String(i + 1), x + 1, y + 5)
+    }
   }
 
   _drawBar(ctx, x, y, w, h, ratio, fill, bg) {

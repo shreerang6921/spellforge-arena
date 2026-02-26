@@ -8,7 +8,11 @@ export const ARENA = {
   BOTTOM: 160,
 }
 
-export const MATCH_DURATION = 300 // seconds
+export const MATCH_DURATION    = 300  // seconds
+export const DEFAULT_COOLDOWN  = 1.0  // used for no-cooldown spells with Heavy Impact
+export const DECK_SIZE         = 8
+export const ULTIMATE_LIMIT    = 1
+export const MAX_MODIFIERS     = 2
 
 export const PLAYER = {
   MAX_HP: 100,
@@ -24,6 +28,7 @@ export const BASIC_ATTACK = {
   SPEED: 200,
   SIZE: 3,
   LIFETIME: 2,
+  COLOR: '#ffffff',
 }
 
 export const AIM_ASSIST_RADIUS = 20

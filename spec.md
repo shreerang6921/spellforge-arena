@@ -630,10 +630,10 @@ Each phase must be **fully tested before the next phase begins**.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Canvas setup, game loop, player rendering, WASD movement, arena boundary, state machine | ✅ Complete |
-| 2 | Basic attack only: projectile system, aim assist, hit detection, damage, HP | — |
-| 3 | Mana system, mana regen, cooldown tracking | — |
-| 4 | Fireball spell: wire spell slot 1, casting, projectile spawn | — |
-| 5 | All remaining normal spells (one at a time, test each) | — |
+| 2 | Basic attack only: projectile system, aim assist, hit detection, damage, HP | ✅ Complete |
+| 3 | Mana system, mana regen, cooldown tracking | ✅ Complete |
+| 4 | Fireball spell: wire spell slot 1, casting, projectile spawn | ✅ Complete |
+| 5 | All remaining normal spells (one at a time, test each) | 🔄 In Progress |
 | 6 | Ultimates (one at a time) | — |
 | 7 | Modifier system (apply to spells, test each modifier) | — |
 | 8 | Bot AI | — |

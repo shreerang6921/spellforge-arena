@@ -4,9 +4,10 @@ import { Projectile } from '../game/Projectile.js'
 import { SpellInstance } from '../game/spells/SpellInstance.js'
 import { PLAYER, ARENA, BASIC_ATTACK } from '../config/constants.js'
 
-const fireDef = { id: 'fireball', baseDamage: 20, manaCost: 15, castTime: 0.3, cooldown: 2 }
-const zeroCostDef = { id: 'free', baseDamage: 10, manaCost: 0, castTime: 0, cooldown: 1 }
-const bigCostDef  = { id: 'expensive', baseDamage: 50, manaCost: 200, castTime: 0, cooldown: 1 }
+const fireDef     = { id: 'fireball',  baseDamage: 20, manaCost: 15,  castTime: 0.3, cooldown: 2 }
+const zeroCostDef = { id: 'free',      baseDamage: 10, manaCost: 0,   castTime: 0,   cooldown: 1 }
+const bigCostDef  = { id: 'expensive', baseDamage: 50, manaCost: 200, castTime: 0,   cooldown: 1 }
+const instantDef  = { id: 'instant',   baseDamage: 10, manaCost: 10,  castTime: 0,   cooldown: 1 }
 
 function makePlayer(overrides = {}) {
   return new Player({ x: 160, y: 90, color: '#fff', ...overrides })
@@ -370,6 +371,105 @@ describe('Player — castSpell', () => {
     const manaAfterFirst = p.mana
     p.castSpell(0)
     expect(p.mana).toBe(manaAfterFirst)
+  })
+})
+
+describe('Player — pendingCast / cast time', () => {
+  const dir = { x: 1, y: 0 }
+
+  it('pendingCast is null initially', () => {
+    expect(makePlayer().pendingCast).toBeNull()
+  })
+
+  it('completedCast is null initially', () => {
+    expect(makePlayer().completedCast).toBeNull()
+  })
+
+  it('sets pendingCast when spell has castTime > 0', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    expect(p.pendingCast).not.toBeNull()
+    expect(p.pendingCast.timeRemaining).toBeCloseTo(0.3)
+  })
+
+  it('enters CastState when castTime > 0', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    expect(p.stateMachine.name).toBe('cast')
+  })
+
+  it('stores direction in pendingCast', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    expect(p.pendingCast.direction).toEqual(dir)
+  })
+
+  it('blocks a second cast while pendingCast is active', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    expect(p.castSpell(0, dir)).toBe(false)
+  })
+
+  it('sets completedCast immediately when castTime is 0', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(instantDef)
+    p.castSpell(0, dir)
+    expect(p.pendingCast).toBeNull()
+    expect(p.completedCast).not.toBeNull()
+  })
+
+  it('completedCast has correct spell and direction', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(instantDef)
+    p.castSpell(0, dir)
+    expect(p.completedCast.spell.definition).toBe(instantDef)
+    expect(p.completedCast.direction).toEqual(dir)
+  })
+
+  it('resolves pendingCast to completedCast after cast time elapses', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    p.update(0.4)  // past the 0.3s cast time
+    expect(p.pendingCast).toBeNull()
+    expect(p.completedCast).not.toBeNull()
+  })
+
+  it('exits CastState after pendingCast resolves', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    p.update(0.4)
+    expect(p.stateMachine.name).not.toBe('cast')
+  })
+
+  it('clears completedCast at start of each update', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(instantDef)
+    p.castSpell(0, dir)       // sets completedCast immediately
+    expect(p.completedCast).not.toBeNull()
+    p.update(0.016)           // next update clears it
+    expect(p.completedCast).toBeNull()
+  })
+
+  it('pendingCast ticks down over time', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0, dir)
+    const before = p.pendingCast.timeRemaining
+    p.update(0.1)
+    expect(p.pendingCast.timeRemaining).toBeLessThan(before)
+  })
+})
+
+describe('Player — spellSlots input', () => {
+  it('spellSlots initialises to 8 false values', () => {
+    const p = makePlayer()
+    expect(p.input.spellSlots).toEqual(Array(8).fill(false))
   })
 })
 
