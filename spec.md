@@ -241,7 +241,7 @@ A spell can only be cast when:
 |---|---|
 | Type | buff (channeled hitscan) |
 | Damage | 12 per second (0.1s tick = 1.2 per tick) |
-| Mana Cost | 8 per second |
+| Mana Cost | 15 per second |
 | Cooldown | 0s |
 | Max Range | 150 px |
 | Cast | Hold key → beam active; release or mana empty → stop |
@@ -588,6 +588,7 @@ src/
 │   │       ├── BuffBehavior.js
 │   │       └── InstantBehavior.js
 │   ├── Projectile.js
+│   ├── AoEZone.js
 │   ├── CollisionSystem.js
 │   ├── BotAI.js
 │   └── InputHandler.js
@@ -633,10 +634,10 @@ Each phase must be **fully tested before the next phase begins**.
 | 2 | Basic attack only: projectile system, aim assist, hit detection, damage, HP | ✅ Complete |
 | 3 | Mana system, mana regen, cooldown tracking | ✅ Complete |
 | 4 | Fireball spell: wire spell slot 1, casting, projectile spawn | ✅ Complete |
-| 5 | All remaining normal spells (one at a time, test each) | 🔄 In Progress |
-| 6 | Ultimates (one at a time) | — |
-| 7 | Modifier system (apply to spells, test each modifier) | — |
-| 8 | Bot AI | — |
+| 5 | All remaining normal spells (one at a time, test each) | ✅ Complete |
+| 6 | Ultimates (one at a time) | ✅ Complete |
+| 7 | Modifier system (apply to spells, test each modifier) | ✅ Complete |
+| 8 | Bot AI | ✅ Complete |
 | 9 | Match system: timer, win condition, match start/end flow | — |
 | 10 | React Deck Forge UI | — |
 | 11 | HUD + Settings (keybinding rebind) | — |

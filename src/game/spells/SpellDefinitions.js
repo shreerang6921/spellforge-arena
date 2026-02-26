@@ -54,7 +54,7 @@ export const BLOOD_LANCE = {
   id: 'blood_lance',
   name: 'Blood Lance',
   baseDamage: 40,
-  manaCost: 0,
+  manaCost: 10,
   hpCost: 5,
   castTime: 0.4,
   cooldown: 2,
@@ -157,7 +157,7 @@ export const MANA_SURGE = {
   tags: ['instant', 'utility'],
 }
 
-// TODO: Add a second cast animation to show the echo
+// TODO: Add a visual indicator (e.g. glowing border on deck slot) to show Spell Echo buff is active
 export const SPELL_ECHO = {
   id: 'spell_echo',
   name: 'Spell Echo',
@@ -180,7 +180,7 @@ export const ARCANE_BEAM = {
   cooldown: 0,
   behaviorType: 'buff',
   beamDamagePerSecond: 12,
-  beamManaCostPerSecond: 8,
+  beamManaCostPerSecond: 15,
   beamMaxRange: 150,
   color: '#aa44ff',
   isUltimate: false,
