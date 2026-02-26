@@ -109,6 +109,51 @@ describe('InputHandler — mouse coords', () => {
   })
 })
 
+describe('InputHandler — mouse click (attack)', () => {
+  it('sets player.input.attack=true on left mousedown', () => {
+    const player = makePlayer()
+    const cbs = {}
+    const canvas = {
+      addEventListener:    (evt, cb) => { cbs[evt] = cb },
+      removeEventListener: vi.fn(),
+      getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 960, height: 540 })),
+    }
+    const handler = new InputHandler(canvas, player)
+    cbs['mousedown']({ button: 0 })
+    expect(player.input.attack).toBe(true)
+    handler.destroy()
+  })
+
+  it('sets player.input.attack=false on left mouseup', () => {
+    const player = makePlayer()
+    const cbs = {}
+    const canvas = {
+      addEventListener:    (evt, cb) => { cbs[evt] = cb },
+      removeEventListener: vi.fn(),
+      getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 960, height: 540 })),
+    }
+    const handler = new InputHandler(canvas, player)
+    cbs['mousedown']({ button: 0 })
+    cbs['mouseup']({ button: 0 })
+    expect(player.input.attack).toBe(false)
+    handler.destroy()
+  })
+
+  it('ignores non-left mouse button clicks', () => {
+    const player = makePlayer()
+    const cbs = {}
+    const canvas = {
+      addEventListener:    (evt, cb) => { cbs[evt] = cb },
+      removeEventListener: vi.fn(),
+      getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 960, height: 540 })),
+    }
+    const handler = new InputHandler(canvas, player)
+    cbs['mousedown']({ button: 2 })  // right click
+    expect(player.input.attack).toBe(false)
+    handler.destroy()
+  })
+})
+
 describe('InputHandler — custom keybindings', () => {
   it('respects custom keybinding for up', () => {
     const player = makePlayer()

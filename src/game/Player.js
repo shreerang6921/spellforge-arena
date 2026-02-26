@@ -1,10 +1,11 @@
-import { PLAYER, ARENA } from '../config/constants.js'
+import { PLAYER, ARENA, BASIC_ATTACK } from '../config/constants.js'
 import { StateMachine } from './StateMachine.js'
 import { IdleState } from './states/IdleState.js'
 import { MoveState } from './states/MoveState.js'
 import { CastState } from './states/CastState.js'
 import { DashState } from './states/DashState.js'
 import { DeadState } from './states/DeadState.js'
+import { Projectile } from './Projectile.js'
 
 export class Player {
   constructor({ x, y, color, isBot = false }) {
@@ -26,12 +27,15 @@ export class Player {
     this.color = color
     this.isBot = isBot
 
+    this.attackCooldown = 0
+
     // Input state (set externally by InputHandler or BotAI)
     this.input = {
       up: false,
       down: false,
       left: false,
       right: false,
+      attack: false,
     }
 
     // State machine
@@ -74,6 +78,7 @@ export class Player {
     this.stateMachine.update(dt)
     this._applyMovement(dt)
     this._regenMana(dt)
+    this._tickCooldowns(dt)
   }
 
   _applyMovement(dt) {
@@ -91,6 +96,48 @@ export class Player {
 
   _regenMana(dt) {
     this.mana = Math.min(this.maxMana, this.mana + this.manaRegen * dt)
+  }
+
+  _tickCooldowns(dt) {
+    if (this.attackCooldown > 0) {
+      this.attackCooldown = Math.max(0, this.attackCooldown - dt)
+    }
+    for (const id in this.cooldowns) {
+      if (this.cooldowns[id] > 0) {
+        this.cooldowns[id] = Math.max(0, this.cooldowns[id] - dt)
+      }
+    }
+  }
+
+  castSpell(slotIndex) {
+    if (this.isDead) return false
+    const spell = this.deck[slotIndex]
+    if (!spell) return false
+    if (this.mana < spell.computedCost) return false
+    const id = spell.definition.id
+    if ((this.cooldowns[id] ?? 0) > 0) return false
+
+    this.mana -= spell.computedCost
+    this.cooldowns[id] = spell.computedCooldown
+    return true
+  }
+
+  tryBasicAttack(direction) {
+    if (this.isDead) return null
+    if (this.attackCooldown > 0) return null
+
+    this.attackCooldown = BASIC_ATTACK.COOLDOWN
+    return new Projectile({
+      x: this.position.x,
+      y: this.position.y,
+      vx: direction.x * BASIC_ATTACK.SPEED,
+      vy: direction.y * BASIC_ATTACK.SPEED,
+      damage: BASIC_ATTACK.DAMAGE,
+      owner: this,
+      size: BASIC_ATTACK.SIZE,
+      type: 'basic',
+      lifetime: BASIC_ATTACK.LIFETIME,
+    })
   }
 
   takeDamage(amount) {

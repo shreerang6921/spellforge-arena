@@ -18,6 +18,16 @@ export const PLAYER = {
   SIZE: 8,         // width and height (square)
 }
 
+export const BASIC_ATTACK = {
+  DAMAGE: 8,
+  COOLDOWN: 0.6,
+  SPEED: 200,
+  SIZE: 3,
+  LIFETIME: 2,
+}
+
+export const AIM_ASSIST_RADIUS = 20
+
 export const COLORS = {
   ARENA_BG: '#1a1a2e',
   ARENA_BORDER: '#4a4a8a',
@@ -27,4 +37,5 @@ export const COLORS = {
   MANA_BAR: '#4444ff',
   HP_BG: '#333',
   MANA_BG: '#333',
+  PROJECTILE_BASIC: '#ffffff',
 }
