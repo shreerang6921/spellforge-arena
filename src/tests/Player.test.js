@@ -490,3 +490,74 @@ describe('Player — CastState movement penalty', () => {
     expect(castDist).toBeCloseTo(normalDist * 0.6, 0)
   })
 })
+
+describe('Player — slow effect (applySlowEffect)', () => {
+  it('slowTimer initialises to 0', () => {
+    const p = makePlayer()
+    expect(p.slowTimer).toBe(0)
+  })
+
+  it('speedMultiplier initialises to 1.0', () => {
+    const p = makePlayer()
+    expect(p.speedMultiplier).toBe(1.0)
+  })
+
+  it('applySlowEffect sets slowTimer to given duration', () => {
+    const p = makePlayer()
+    p.applySlowEffect(1.5)
+    expect(p.slowTimer).toBe(1.5)
+  })
+
+  it('applySlowEffect sets speedMultiplier to 0.85 (15% slow)', () => {
+    const p = makePlayer()
+    p.applySlowEffect(1.5)
+    expect(p.speedMultiplier).toBeCloseTo(0.85)
+  })
+
+  it('slow reduces movement distance while active', () => {
+    const pNormal = makePlayer({ x: 160, y: 90 })
+    pNormal.input.right = true
+    pNormal.update(1)
+    const normalDist = pNormal.position.x - 160
+
+    const pSlowed = makePlayer({ x: 160, y: 90 })
+    pSlowed.applySlowEffect(1.5)
+    pSlowed.input.right = true
+    pSlowed.update(1)
+    const slowDist = pSlowed.position.x - 160
+
+    expect(slowDist).toBeLessThan(normalDist)
+    expect(slowDist).toBeCloseTo(normalDist * 0.85, 0)
+  })
+
+  it('slowTimer decrements over time', () => {
+    const p = makePlayer()
+    p.applySlowEffect(1.5)
+    p.update(0.5)
+    expect(p.slowTimer).toBeCloseTo(1.0, 1)
+  })
+
+  it('speedMultiplier resets to 1.0 when slow expires', () => {
+    const p = makePlayer()
+    p.applySlowEffect(0.5)
+    p.update(1.0)  // well past duration
+    expect(p.slowTimer).toBe(0)
+    expect(p.speedMultiplier).toBe(1.0)
+  })
+
+  it('does not go below 0 slowTimer', () => {
+    const p = makePlayer()
+    p.applySlowEffect(0.1)
+    p.update(10)
+    expect(p.slowTimer).toBe(0)
+  })
+
+  it('refreshes duration when slow re-applied (no stacking)', () => {
+    const p = makePlayer()
+    p.applySlowEffect(1.5)
+    p.update(1.0)   // 0.5s remaining
+    p.applySlowEffect(1.5)  // refresh
+    expect(p.slowTimer).toBeCloseTo(1.5)
+    expect(p.speedMultiplier).toBeCloseTo(0.85)
+  })
+})

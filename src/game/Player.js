@@ -19,7 +19,12 @@ export class Player {
     this.manaRegen = PLAYER.MANA_REGEN
     this.size = PLAYER.SIZE
 
-    this.speedMultiplier = 1.0   // modified by buffs (Phase Walk etc.)
+    this.speedMultiplier = 1.0   // combined multiplier from all active effects
+    this.slowTimer = 0           // remaining duration of slow effect
+    this.phaseWalkTimer = 0      // remaining duration of Phase Walk buff
+    this.dashTimer = 0           // remaining duration of Dash movement
+
+    this.spellEchoActive = false // true when Spell Echo buff is active
 
     this.deck = []
     this.cooldowns = {}
@@ -69,7 +74,15 @@ export class Player {
     this.completedCast = null     // clear previous frame's completed cast
     this._tickPendingCast(dt)     // may resolve pendingCast → sets completedCast
 
-    // Determine state from input
+    // Tick dash timer; exit DashState when it expires
+    if (this.dashTimer > 0) {
+      this.dashTimer = Math.max(0, this.dashTimer - dt)
+      if (this.dashTimer === 0) {
+        this.setState('idle')
+      }
+    }
+
+    // Determine state from input (skip if in cast/dash/dead)
     const moving = this.input.up || this.input.down || this.input.left || this.input.right
     const currentName = this.stateMachine.name
 
@@ -85,6 +98,7 @@ export class Player {
     this._applyMovement(dt)
     this._regenMana(dt)
     this._tickCooldowns(dt)
+    this._tickStatusEffects(dt)
   }
 
   _applyMovement(dt) {
@@ -125,6 +139,43 @@ export class Player {
     }
   }
 
+  _tickStatusEffects(dt) {
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt)
+    }
+    if (this.phaseWalkTimer > 0) {
+      this.phaseWalkTimer = Math.max(0, this.phaseWalkTimer - dt)
+    }
+    this._recomputeSpeedMultiplier()
+  }
+
+  _recomputeSpeedMultiplier() {
+    let mult = 1.0
+    if (this.phaseWalkTimer > 0) mult *= 1.5
+    if (this.slowTimer > 0)      mult *= 0.85
+    this.speedMultiplier = mult
+  }
+
+  // --- Status effect APIs ---
+
+  applySlowEffect(duration) {
+    // No stacking — refresh timer
+    this.slowTimer = duration
+    this._recomputeSpeedMultiplier()
+  }
+
+  applyPhaseWalk(duration) {
+    this.phaseWalkTimer = duration
+    this._recomputeSpeedMultiplier()
+  }
+
+  startDash(duration) {
+    this.dashTimer = duration
+    this.setState('dash')
+  }
+
+  // --- Spell casting ---
+
   castSpell(slotIndex, direction = { x: 1, y: 0 }) {
     if (this.isDead) return false
     if (this.pendingCast) return false
@@ -134,8 +185,18 @@ export class Player {
     const id = spell.definition.id
     if ((this.cooldowns[id] ?? 0) > 0) return false
 
+    // TODO: Check blood lance still cost mana (should only cost HP)
+    // Blood Lance: cannot cast if HP ≤ hpCost
+    const hpCost = spell.definition.hpCost ?? 0
+    if (hpCost > 0 && this.hp <= hpCost) return false
+
     this.mana -= spell.computedCost
     this.cooldowns[id] = spell.computedCooldown
+
+    // Deduct HP cost (Blood Lance)
+    if (hpCost > 0) {
+      this.hp = Math.max(0, this.hp - hpCost)
+    }
 
     if (spell.computedCastTime > 0) {
       this.pendingCast = { spell, direction, timeRemaining: spell.computedCastTime }
