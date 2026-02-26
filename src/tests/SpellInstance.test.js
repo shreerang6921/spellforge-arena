@@ -45,7 +45,7 @@ describe('SpellInstance — construction', () => {
   })
 
   it('stores provided modifiers', () => {
-    const mod = { id: 'empower' }
+    const mod = { id: 'empower', apply: () => {} }
     const si = new SpellInstance(fireball, [mod])
     expect(si.modifiers).toEqual([mod])
   })

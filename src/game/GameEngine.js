@@ -16,6 +16,7 @@ import { EMPOWER } from './spells/ModifierDefinitions.js'
 import { BotAI } from './BotAI.js'
 import { createBotDeck } from '../config/botDeck.js'
 
+// TODO: Add GameEngine integration tests for spell interactions (echo, overload, lifesteal, lingering burn, etc.)
 export class GameEngine {
   constructor(canvas) {
     this.canvas = canvas
@@ -104,12 +105,16 @@ export class GameEngine {
     this.player.update(dt)
     this.bot.update(dt)
 
+    // Track current frame's aim direction so we can refresh it at cast completion
+    let currentPlayerDir = { x: 1, y: 0 }
+
     if (this.inputHandler) {
       const dir = computeAimDirection(
         this.player.position,
         this.inputHandler.mouse,
         this.bot.isDead ? null : this.bot.position
       )
+      currentPlayerDir = dir
 
       // Basic attack
       if (this.player.input.attack) {
@@ -118,7 +123,7 @@ export class GameEngine {
       }
 
       // Arcane Beam — channeled, handled separately before normal spell slots
-      this._handleArcaneBeam(dt, dir)
+      this._handleArcaneBeam(dt)
 
       // Regular spell slots — skip Arcane Beam slots (handled above)
       if (!this.player.pendingCast) {
@@ -137,7 +142,9 @@ export class GameEngine {
     if (this.botAI) this.botAI.update(dt)
 
     // Process completed casts — player first, then bot
+    // Refresh player direction to current frame so spells don't use stale cast-start direction
     if (this.player.completedCast) {
+      this.player.completedCast.direction = currentPlayerDir
       this._processCompletedCast(this.player.completedCast, this.player)
       this.player.completedCast = null
     }
@@ -436,7 +443,7 @@ export class GameEngine {
     this._activeBurns = this._activeBurns.filter(b => b.remaining > 0)
   }
 
-  _handleArcaneBeam(dt, dir) {
+  _handleArcaneBeam(dt) {
     for (let i = 0; i < this.player.deck.length; i++) {
       const spell = this.player.deck[i]
       if (!spell || spell.definition.id !== 'arcane_beam') continue
@@ -446,17 +453,24 @@ export class GameEngine {
       const canChannel = keyHeld && !this.player.isDead && !this.player.pendingCast && this.player.mana > 0
 
       if (canChannel) {
+        // Raw cursor direction — no aim assist for the beam
+        const mouse = this.inputHandler.mouse
+        const rawDx = mouse.x - this.player.position.x
+        const rawDy = mouse.y - this.player.position.y
+        const rawLen = Math.sqrt(rawDx * rawDx + rawDy * rawDy)
+        const beamDir = rawLen > 0 ? { x: rawDx / rawLen, y: rawDy / rawLen } : { x: 1, y: 0 }
+
         this.player.mana = Math.max(0, this.player.mana - def.beamManaCostPerSecond * dt)
         this.player.setState('cast')
         this.arcaneBeamActive = true
-        this.arcaneBeamDir = dir
+        this.arcaneBeamDir = beamDir
 
         // Hitscan: damage bot if within range and in beam direction
         if (!this.bot.isDead) {
           const dx = this.bot.position.x - this.player.position.x
           const dy = this.bot.position.y - this.player.position.y
           const dist = Math.sqrt(dx * dx + dy * dy)
-          const dot = dx * dir.x + dy * dir.y
+          const dot = dx * beamDir.x + dy * beamDir.y
           if (dist <= def.beamMaxRange && dot > 0) {
             this.bot.takeDamage(def.beamDamagePerSecond * dt)
           }

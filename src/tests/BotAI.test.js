@@ -207,15 +207,14 @@ describe('BotAI — _think: ultimate casting', () => {
 
         // Force Math.random to return < 0.5 so the 50% check passes
         vi.spyOn(Math, 'random').mockReturnValue(0.3)
-        const castSpy = vi.spyOn(bot, 'castSpell')
 
         ai._think()
 
         vi.restoreAllMocks()
 
-        // Expect ultimate slot to have been attempted
-        const ultCast = castSpy.mock.calls.find(([slot]) => slot === ultimateSlot)
-        expect(ultCast).toBeDefined()
+        // If the ultimate was cast, its cooldown will be > 0
+        const ultDef = bot.deck[ultimateSlot].definition
+        expect(bot.cooldowns[ultDef.id]).toBeGreaterThan(0)
     })
 
     it('skips ultimate when random() >= 0.5', () => {

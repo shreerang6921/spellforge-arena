@@ -9,6 +9,9 @@ export class CastState {
   enter() {}
 
   update(_dt) {
+    // Bots manage velocity via BotAI; don't override it here
+    if (this.player.isBot) return
+
     // 60% speed while casting
     const speed = PLAYER.SPEED * 0.6 * this.player.speedMultiplier
     const input = this.player.input
