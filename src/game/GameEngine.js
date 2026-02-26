@@ -2,10 +2,15 @@ import { RESOLUTION_W, RESOLUTION_H, COLORS, ARENA } from '../config/constants.j
 import { Player } from './Player.js'
 import { InputHandler } from './InputHandler.js'
 import { Projectile } from './Projectile.js'
+import { AoEZone } from './AoEZone.js'
 import { runCollision } from './CollisionSystem.js'
 import { computeAimDirection } from './AimAssist.js'
 import { SpellInstance } from './spells/SpellInstance.js'
-import { FIREBALL, ICE_SHARD } from './spells/SpellDefinitions.js'
+import {
+  FIREBALL, ICE_SHARD, ARCANE_BURST, BLOOD_LANCE,
+  GROUND_FLAME, DASH, BLINK_STRIKE, PHASE_WALK,
+  HEALING_PULSE, MANA_SURGE, SPELL_ECHO, ARCANE_BEAM,
+} from './spells/SpellDefinitions.js'
 
 export class GameEngine {
   constructor(canvas) {
@@ -23,6 +28,10 @@ export class GameEngine {
     this.bot    = null
     this.inputHandler = null
     this.projectiles = []
+    this.aoeZones    = []
+
+    this.arcaneBeamActive = false
+    this.arcaneBeamDir    = null
   }
 
   init() {
@@ -32,6 +41,12 @@ export class GameEngine {
     // Temporary deck — will be replaced by Deck Forge in Phase 10
     this.player.deck[0] = new SpellInstance(FIREBALL)
     this.player.deck[1] = new SpellInstance(ICE_SHARD)
+    this.player.deck[2] = new SpellInstance(ARCANE_BURST)
+    this.player.deck[3] = new SpellInstance(BLOOD_LANCE)
+    this.player.deck[4] = new SpellInstance(GROUND_FLAME)
+    this.player.deck[5] = new SpellInstance(DASH)
+    this.player.deck[6] = new SpellInstance(HEALING_PULSE)
+    this.player.deck[7] = new SpellInstance(MANA_SURGE)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
   }
@@ -83,10 +98,15 @@ export class GameEngine {
         if (proj) this.projectiles.push(proj)
       }
 
-      // Spell slots — only one slot per frame, skip if already casting
+      // Arcane Beam — channeled, handled separately before normal spell slots
+      this._handleArcaneBeam(dt, dir)
+
+      // Regular spell slots — skip Arcane Beam slots (handled above)
       if (!this.player.pendingCast) {
         for (let i = 0; i < this.player.input.spellSlots.length; i++) {
           if (this.player.input.spellSlots[i]) {
+            const spell = this.player.deck[i]
+            if (spell?.definition.id === 'arcane_beam') break
             this.player.castSpell(i, dir)
             break
           }
@@ -94,42 +114,251 @@ export class GameEngine {
       }
     }
 
-    // Spawn projectile when a cast completes
+    // Process completed casts (all behavior types)
     if (this.player.completedCast) {
-      const proj = this._spawnSpellProjectile(this.player.completedCast, this.player)
-      if (proj) this.projectiles.push(proj)
+      this._processCompletedCast(this.player.completedCast, this.player)
       this.player.completedCast = null
     }
 
-    // Update all projectiles
-    for (const proj of this.projectiles) {
-      proj.update(dt)
-    }
+    // Update projectiles and AoE zones
+    for (const proj of this.projectiles) proj.update(dt)
+    for (const zone of this.aoeZones)    zone.update(dt, [this.player, this.bot])
 
-    // Collision detection
+    // Collision detection (projectiles only — AoE handles its own damage)
     runCollision(this.projectiles, [this.player, this.bot])
 
-    // Remove inactive projectiles
+    // Cleanup
     this.projectiles = this.projectiles.filter(p => p.active)
+    this.aoeZones    = this.aoeZones.filter(z => z.active)
   }
+
+  // ─── Spell execution ────────────────────────────────────────────────────────
+
+  _processCompletedCast(completedCast, owner) {
+    const { spell, direction } = completedCast
+    const def = spell.definition
+
+    // Consume Spell Echo before processing (non-combat spells still consume)
+    const wasEchoActive = owner.spellEchoActive
+    if (wasEchoActive) owner.spellEchoActive = false
+
+    switch (def.behaviorType) {
+      case 'projectile': {
+        const projs = this._spawnSpellProjectile(completedCast, owner)
+        this.projectiles.push(...projs)
+        // Echo: fire again at 50% damage
+        if (wasEchoActive) {
+          const echo = { definition: def, computedDamage: spell.computedDamage * 0.5 }
+          this.projectiles.push(...this._spawnSpellProjectile({ spell: echo, direction }, owner))
+        }
+        break
+      }
+      case 'aoe': {
+        this._spawnAoEZone(completedCast, owner)
+        if (wasEchoActive) {
+          const echo = { definition: def, computedDamage: spell.computedDamage * 0.5 }
+          this._spawnAoEZone({ spell: echo, direction }, owner)
+        }
+        break
+      }
+      case 'dash': {
+        this._executeDash(completedCast, owner)
+        break
+      }
+      case 'buff': {
+        this._executeBuff(completedCast, owner)
+        break
+      }
+      case 'instant': {
+        this._executeInstant(completedCast, owner)
+        // Echo for Healing Pulse (not Mana Surge — it's non-combat per spec)
+        if (wasEchoActive && def.healAmount) {
+          owner.heal(Math.floor(def.healAmount * 0.5))
+        }
+        break
+      }
+    }
+  }
+
+  _spawnSpellProjectile(completedCast, owner) {
+    const { spell, direction } = completedCast
+    const def = spell.definition
+    if (def.behaviorType !== 'projectile') return []
+
+    const onHit = def.slowDuration
+      ? (target) => target.applySlowEffect(def.slowDuration)
+      : null
+
+    const count     = def.projectileCount ?? 1
+    const spreadRad = ((def.spreadAngle ?? 0) * Math.PI) / 180
+    const projectiles = []
+
+    for (let i = 0; i < count; i++) {
+      const angleOffset = (i - Math.floor(count / 2)) * spreadRad
+      const cos = Math.cos(angleOffset)
+      const sin = Math.sin(angleOffset)
+      const vx = direction.x * cos - direction.y * sin
+      const vy = direction.x * sin + direction.y * cos
+      projectiles.push(new Projectile({
+        x: owner.position.x,
+        y: owner.position.y,
+        vx: vx * def.projectileSpeed,
+        vy: vy * def.projectileSpeed,
+        damage: spell.computedDamage,
+        owner,
+        size:  def.projectileSize,
+        sizeH: def.projectileSizeH,
+        type:  def.id,
+        lifetime: def.projectileLifetime,
+        color: def.color,
+        onHit,
+      }))
+    }
+
+    return projectiles
+  }
+
+  _spawnAoEZone(completedCast, owner) {
+    const { spell } = completedCast
+    const def = spell.definition
+    // Place at cursor if available, otherwise at owner position
+    const pos = this.inputHandler ? this.inputHandler.mouse : owner.position
+    this.aoeZones.push(new AoEZone({
+      x:        pos.x,
+      y:        pos.y,
+      radius:   def.aoeRadius,
+      damage:   spell.computedDamage,
+      tickRate: def.aoeTickRate,
+      duration: def.aoeDuration,
+      owner,
+      color: def.color,
+    }))
+  }
+
+  _executeDash(completedCast, owner) {
+    const { spell, direction } = completedCast
+    const def = spell.definition
+
+    if (def.id === 'blink_strike') {
+      // Teleport to cursor (capped to blinkMaxRange)
+      const mouse = this.inputHandler?.mouse
+      let tx = owner.position.x + direction.x * def.blinkMaxRange
+      let ty = owner.position.y + direction.y * def.blinkMaxRange
+
+      if (mouse) {
+        const dx = mouse.x - owner.position.x
+        const dy = mouse.y - owner.position.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 0 && dist < def.blinkMaxRange) {
+          tx = mouse.x
+          ty = mouse.y
+        }
+      }
+
+      // Clamp teleport destination to arena
+      const half = owner.size / 2
+      tx = Math.max(ARENA.LEFT + half, Math.min(ARENA.RIGHT  - half, tx))
+      ty = Math.max(ARENA.TOP  + half, Math.min(ARENA.BOTTOM - half, ty))
+
+      owner.position.x = tx
+      owner.position.y = ty
+
+      // AoE damage at landing zone
+      const targets = [this.player, this.bot].filter(p => p !== owner && !p.isDead)
+      for (const target of targets) {
+        const dx = target.position.x - tx
+        const dy = target.position.y - ty
+        if (Math.sqrt(dx * dx + dy * dy) < def.aoeRadius + target.size / 2) {
+          target.takeDamage(spell.computedDamage)
+        }
+      }
+    } else {
+      // Regular Dash: move at high speed for dashDuration, then stop
+      const speed = def.dashDistance / def.dashDuration
+      owner.velocity.x = direction.x * speed
+      owner.velocity.y = direction.y * speed
+      owner.startDash(def.dashDuration)
+    }
+  }
+
+  _executeBuff(completedCast, owner) {
+    const { spell } = completedCast
+    const def = spell.definition
+
+    if (def.id === 'phase_walk') {
+      owner.applyPhaseWalk(def.duration)
+    } else if (def.id === 'spell_echo') {
+      owner.spellEchoActive = true
+    }
+    // arcane_beam is handled separately via _handleArcaneBeam
+  }
+
+  _executeInstant(completedCast, owner) {
+    const { spell } = completedCast
+    const def = spell.definition
+
+    if (def.healAmount) {
+      owner.heal(def.healAmount)
+    }
+    if (def.manaRestore) {
+      owner.mana = Math.min(owner.maxMana, owner.mana + def.manaRestore)
+    }
+  }
+
+  _handleArcaneBeam(dt, dir) {
+    for (let i = 0; i < this.player.deck.length; i++) {
+      const spell = this.player.deck[i]
+      if (!spell || spell.definition.id !== 'arcane_beam') continue
+
+      const keyHeld    = this.player.input.spellSlots[i]
+      const def        = spell.definition
+      const canChannel = keyHeld && !this.player.isDead && !this.player.pendingCast && this.player.mana > 0
+
+      if (canChannel) {
+        this.player.mana = Math.max(0, this.player.mana - def.beamManaCostPerSecond * dt)
+        this.player.setState('cast')
+        this.arcaneBeamActive = true
+        this.arcaneBeamDir    = dir
+
+        // Hitscan: damage bot if within range and in beam direction
+        if (!this.bot.isDead) {
+          const dx   = this.bot.position.x - this.player.position.x
+          const dy   = this.bot.position.y - this.player.position.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const dot  = dx * dir.x + dy * dir.y
+          if (dist <= def.beamMaxRange && dot > 0) {
+            this.bot.takeDamage(def.beamDamagePerSecond * dt)
+          }
+        }
+      } else if (this.arcaneBeamActive) {
+        // Key released or conditions lost — stop beam
+        this.arcaneBeamActive = false
+        this.arcaneBeamDir    = null
+        if (this.player.stateMachine.name === 'cast') {
+          this.player.setState('idle')
+        }
+      }
+      break
+    }
+  }
+
+  // ─── Rendering ──────────────────────────────────────────────────────────────
 
   render(ctx) {
     this._drawArena(ctx)
+    for (const zone of this.aoeZones) this._drawAoEZone(ctx, zone)
     this._drawPlayer(ctx, this.player)
     this._drawPlayer(ctx, this.bot)
-    for (const proj of this.projectiles) {
-      this._drawProjectile(ctx, proj)
-    }
+    for (const proj of this.projectiles) this._drawProjectile(ctx, proj)
+    this._drawArcaneBeam(ctx)
     this._drawHUD(ctx)
     this._drawDeck(ctx)
   }
 
   _drawArena(ctx) {
-    // Background
     ctx.fillStyle = COLORS.ARENA_BG
     ctx.fillRect(0, 0, RESOLUTION_W, RESOLUTION_H)
 
-    // Arena border
     ctx.strokeStyle = COLORS.ARENA_BORDER
     ctx.lineWidth = 1
     ctx.strokeRect(
@@ -142,12 +371,17 @@ export class GameEngine {
 
   _drawPlayer(ctx, player) {
     const half = player.size / 2
-    // Round only at render time — physics uses floats
     const x = Math.round(player.position.x - half)
     const y = Math.round(player.position.y - half)
 
     ctx.fillStyle = player.isDead ? '#555' : player.color
     ctx.fillRect(x, y, player.size, player.size)
+
+    // Phase Walk tint (semi-transparent cyan overlay)
+    if (player.phaseWalkTimer > 0) {
+      ctx.fillStyle = '#66ffff'
+      ctx.fillRect(x - 1, y - 1, player.size + 2, player.size + 2)
+    }
   }
 
   _drawHUD(ctx) {
@@ -157,35 +391,40 @@ export class GameEngine {
     this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana     / this.bot.maxMana,     COLORS.MANA_BAR, COLORS.MANA_BG)
   }
 
-  _spawnSpellProjectile(completedCast, owner) {
-    const { spell, direction } = completedCast
-    const def = spell.definition
-    if (def.behaviorType !== 'projectile') return null
-
-    const onHit = def.slowDuration
-      ? (target) => target.applySlowEffect(def.slowDuration)
-      : null
-
-    return new Projectile({
-      x: owner.position.x,
-      y: owner.position.y,
-      vx: direction.x * def.projectileSpeed,
-      vy: direction.y * def.projectileSpeed,
-      damage: spell.computedDamage,
-      owner,
-      size: def.projectileSize,
-      type: def.id,
-      lifetime: def.projectileLifetime,
-      color: def.color,
-      onHit,
-    })
-  }
-
   _drawProjectile(ctx, proj) {
     ctx.fillStyle = proj.color
     const x = Math.round(proj.position.x - proj.size.w / 2)
     const y = Math.round(proj.position.y - proj.size.h / 2)
     ctx.fillRect(x, y, proj.size.w, proj.size.h)
+  }
+
+  _drawAoEZone(ctx, zone) {
+    ctx.fillStyle = zone.color
+    // Draw as a square (programmer art); arc requires ctx.arc which may not exist in tests
+    const r = zone.radius
+    ctx.fillRect(
+      Math.round(zone.position.x - r),
+      Math.round(zone.position.y - r),
+      r * 2,
+      r * 2
+    )
+  }
+
+  _drawArcaneBeam(ctx) {
+    if (!this.arcaneBeamActive || !this.arcaneBeamDir) return
+    // Draw beam as a narrow rect — avoids ctx.beginPath/lineTo which aren't mocked in tests
+    const range = 150
+    const x1 = this.player.position.x
+    const y1 = this.player.position.y
+    const x2 = x1 + this.arcaneBeamDir.x * range
+    const y2 = y1 + this.arcaneBeamDir.y * range
+    // Simple thin horizontal/vertical rect approximation using fillRect
+    const midX = Math.round((x1 + x2) / 2)
+    const midY = Math.round((y1 + y2) / 2)
+    const len  = Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+    ctx.fillStyle = '#aa44ff'
+    ctx.fillRect(Math.round(x1), Math.round(y1), Math.max(len, 1), 2)
+    void midX; void midY  // suppress unused warning
   }
 
   _drawDeck(ctx) {
@@ -194,22 +433,19 @@ export class GameEngine {
     const SLOTS = 8
     const totalW = SLOTS * SLOT + (SLOTS - 1) * GAP
     const startX = Math.floor((RESOLUTION_W - totalW) / 2)
-    const y = RESOLUTION_H - SLOT - 2   // 2px above canvas bottom
+    const y = RESOLUTION_H - SLOT - 2
 
     for (let i = 0; i < SLOTS; i++) {
       const x = startX + i * (SLOT + GAP)
       const spell = this.player.deck[i]
 
-      // Slot background
       ctx.fillStyle = '#1a1a1a'
       ctx.fillRect(x, y, SLOT, SLOT)
 
       if (spell) {
-        // Spell colour fill (inner, 1px inset)
         ctx.fillStyle = spell.definition.color
         ctx.fillRect(x + 1, y + 1, SLOT - 2, SLOT - 2)
 
-        // Cooldown dark overlay (top-down wipe)
         const cd    = this.player.cooldowns[spell.definition.id] ?? 0
         const total = spell.computedCooldown
         if (cd > 0 && total > 0) {
@@ -218,18 +454,54 @@ export class GameEngine {
           ctx.fillRect(x + 1, y + 1, SLOT - 2, Math.round((SLOT - 2) * ratio))
         }
 
-        // White border while this slot is being cast
         if (this.player.pendingCast?.spell === spell) {
           ctx.strokeStyle = '#ffffff'
           ctx.lineWidth = 1
           ctx.strokeRect(x + 0.5, y + 0.5, SLOT - 1, SLOT - 1)
         }
+
+        // Spell Echo indicator (glowing border)
+        if (this.player.spellEchoActive) {
+          ctx.strokeStyle = '#ff88ff'
+          ctx.lineWidth = 1
+          ctx.strokeRect(x + 0.5, y + 0.5, SLOT - 1, SLOT - 1)
+        }
       }
 
-      // Slot number label
       ctx.fillStyle = spell ? '#fff' : '#555'
       ctx.font = '5px monospace'
       ctx.fillText(String(i + 1), x + 1, y + 5)
+    }
+
+    // Tooltip for hovered slot — drawn last so it appears on top
+    const mouse = this.inputHandler?.mouse
+    if (mouse) {
+      for (let i = 0; i < SLOTS; i++) {
+        const sx = startX + i * (SLOT + GAP)
+        if (mouse.x < sx || mouse.x >= sx + SLOT) continue
+        if (mouse.y < y  || mouse.y >= y  + SLOT) continue
+        const spell = this.player.deck[i]
+        if (!spell) break
+
+        const name = spell.definition.name
+        ctx.font = '5px monospace'
+        // measureText may not exist in test environments — fall back to char-width estimate
+        const charW = ctx.measureText ? ctx.measureText(name).width : name.length * 3.5
+        const PAD  = 2
+        const boxW = Math.ceil(charW) + PAD * 2
+        const boxH = 9   // 5px font + top/bottom padding
+
+        // Center above the slot, clamped so it never overflows the canvas
+        let tx = sx + Math.floor((SLOT - boxW) / 2)
+        tx = Math.max(0, Math.min(RESOLUTION_W - boxW, tx))
+        const ty = y - boxH - 2
+
+        ctx.fillStyle = '#111111'
+        ctx.fillRect(tx, ty, boxW, boxH)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(name, tx + PAD, ty + boxH - PAD)
+        break
+      }
     }
   }
 

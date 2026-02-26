@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GameEngine } from '../game/GameEngine.js'
 import { SpellInstance } from '../game/spells/SpellInstance.js'
-import { FIREBALL, ICE_SHARD } from '../game/spells/SpellDefinitions.js'
+import { FIREBALL, ICE_SHARD, ARCANE_BURST } from '../game/spells/SpellDefinitions.js'
 import { RESOLUTION_W, RESOLUTION_H } from '../config/constants.js'
 
 function makeMockCtx() {
@@ -345,7 +345,7 @@ describe('GameEngine — deck HUD (_drawDeck)', () => {
 })
 
 describe('GameEngine — _spawnSpellProjectile', () => {
-  it('returns null for non-projectile behavior types', () => {
+  it('returns empty array for non-projectile behavior types', () => {
     const { canvas } = makeMockCanvas()
     const engine = new GameEngine(canvas)
     engine.init()
@@ -354,15 +354,24 @@ describe('GameEngine — _spawnSpellProjectile', () => {
       behaviorType: 'buff', projectileSpeed: 0, projectileSize: 0, projectileLifetime: 1, color: '#fff',
     })
     const result = engine._spawnSpellProjectile({ spell: buffSpell, direction: { x: 1, y: 0 } }, engine.player)
-    expect(result).toBeNull()
+    expect(result).toEqual([])
   })
 
-  it('returns null for projectile with no slowDuration (onHit is null)', () => {
+  it('returns a single-element array for a standard projectile spell', () => {
     const { canvas } = makeMockCanvas()
     const engine = new GameEngine(canvas)
     engine.init()
     const spell = new SpellInstance(FIREBALL)
-    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    const result = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    expect(result).toHaveLength(1)
+  })
+
+  it('onHit is null for spells without slowDuration', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(FIREBALL)
+    const [proj] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
     expect(proj.onHit).toBeNull()
   })
 
@@ -371,7 +380,7 @@ describe('GameEngine — _spawnSpellProjectile', () => {
     const engine = new GameEngine(canvas)
     engine.init()
     const spell = new SpellInstance(ICE_SHARD)
-    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    const [proj] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
     expect(typeof proj.onHit).toBe('function')
   })
 
@@ -380,7 +389,7 @@ describe('GameEngine — _spawnSpellProjectile', () => {
     const engine = new GameEngine(canvas)
     engine.init()
     const spell = new SpellInstance(ICE_SHARD)
-    const proj = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    const [proj] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
     proj.onHit(engine.bot)
     expect(engine.bot.slowTimer).toBe(ICE_SHARD.slowDuration)
     expect(engine.bot.speedMultiplier).toBeCloseTo(0.85)
@@ -453,5 +462,121 @@ describe('GameEngine — Ice Shard spell casting', () => {
     engine.player.input.spellSlots[1] = true
     engine.update(0.016)
     expect(engine.player.mana).toBeLessThan(100)
+  })
+})
+
+describe('GameEngine — Arcane Burst spell casting', () => {
+  function makeEngineWithArcaneBurst() {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.deck[2] = new SpellInstance(ARCANE_BURST)
+    return engine
+  }
+
+  it('pressing spell slot 3 starts a pending cast', () => {
+    const engine = makeEngineWithArcaneBurst()
+    engine.player.input.spellSlots[2] = true
+    engine.update(0.016)
+    expect(engine.player.pendingCast).not.toBeNull()
+  })
+
+  it('spawns 3 projectiles after cast time elapses', () => {
+    const engine = makeEngineWithArcaneBurst()
+    engine.player.input.spellSlots[2] = true
+    engine.update(0.016)
+    engine.player.input.spellSlots[2] = false
+    engine.update(0.21)  // resolves 0.2s cast; projectiles only travel 0.21s (stay in bounds)
+    expect(engine.projectiles.length).toBe(3)
+  })
+
+  it('each projectile has the correct damage', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    for (const proj of projs) {
+      expect(proj.damage).toBe(ARCANE_BURST.baseDamage)
+    }
+  })
+
+  it('each projectile has the correct color', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    for (const proj of projs) {
+      expect(proj.color).toBe(ARCANE_BURST.color)
+    }
+  })
+
+  it('each projectile has the correct size', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    for (const proj of projs) {
+      expect(proj.size).toEqual({ w: ARCANE_BURST.projectileSize, h: ARCANE_BURST.projectileSize })
+    }
+  })
+
+  it('projectiles have different directions (spread cone)', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const [p0, p1, p2] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    // Side projectiles must differ from center
+    expect(p0.velocity.x).not.toBeCloseTo(p1.velocity.x)
+    expect(p2.velocity.x).not.toBeCloseTo(p1.velocity.x)
+  })
+
+  it('center projectile travels straight toward aim direction', () => {
+    const engine = makeEngineWithArcaneBurst()
+    // Force a specific direction via completedCast directly
+    const spell = new SpellInstance(ARCANE_BURST)
+    const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    // Center projectile (index 1) should have vy ≈ 0 and vx = speed
+    expect(projs[1].velocity.x).toBeCloseTo(ARCANE_BURST.projectileSpeed)
+    expect(projs[1].velocity.y).toBeCloseTo(0, 5)
+  })
+
+  it('side projectiles are spread at ±15° from center', () => {
+    const engine = makeEngineWithArcaneBurst()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    const angle = 15 * Math.PI / 180
+    // Left projectile (index 0): -15°
+    expect(projs[0].velocity.x).toBeCloseTo(Math.cos(-angle) * ARCANE_BURST.projectileSpeed, 3)
+    expect(projs[0].velocity.y).toBeCloseTo(Math.sin(-angle) * ARCANE_BURST.projectileSpeed, 3)
+    // Right projectile (index 2): +15°
+    expect(projs[2].velocity.x).toBeCloseTo(Math.cos(angle) * ARCANE_BURST.projectileSpeed, 3)
+    expect(projs[2].velocity.y).toBeCloseTo(Math.sin(angle) * ARCANE_BURST.projectileSpeed, 3)
+  })
+
+  it('_spawnSpellProjectile returns 3 projectiles for Arcane Burst', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    const spell = new SpellInstance(ARCANE_BURST)
+    const result = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    expect(result).toHaveLength(3)
+  })
+
+  it('Arcane Burst deducts mana on cast', () => {
+    const engine = makeEngineWithArcaneBurst()
+    engine.player.input.spellSlots[2] = true
+    engine.update(0.016)
+    expect(engine.player.mana).toBeLessThan(100)
+  })
+
+  it('Arcane Burst has a 2s cooldown after casting', () => {
+    const engine = makeEngineWithArcaneBurst()
+    engine.player.input.spellSlots[2] = true
+    engine.update(0.016)
+    expect(engine.player.cooldowns['arcane_burst']).toBeCloseTo(ARCANE_BURST.cooldown)
   })
 })

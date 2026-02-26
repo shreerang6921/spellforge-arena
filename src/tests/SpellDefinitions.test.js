@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { FIREBALL, ICE_SHARD } from '../game/spells/SpellDefinitions.js'
+import { FIREBALL, ICE_SHARD, ARCANE_BURST } from '../game/spells/SpellDefinitions.js'
 
 describe('FIREBALL definition', () => {
   it('has correct id', () => expect(FIREBALL.id).toBe('fireball'))
@@ -16,6 +16,26 @@ describe('FIREBALL definition', () => {
     expect(FIREBALL.tags).toContain('damage')
   })
   it('has a color', () => expect(typeof FIREBALL.color).toBe('string'))
+})
+
+describe('ARCANE_BURST definition', () => {
+  it('has correct id', () => expect(ARCANE_BURST.id).toBe('arcane_burst'))
+  it('has correct name', () => expect(ARCANE_BURST.name).toBe('Arcane Burst'))
+  it('has correct baseDamage', () => expect(ARCANE_BURST.baseDamage).toBe(12))
+  it('has correct manaCost', () => expect(ARCANE_BURST.manaCost).toBe(20))
+  it('has correct castTime', () => expect(ARCANE_BURST.castTime).toBe(0.2))
+  it('has correct cooldown', () => expect(ARCANE_BURST.cooldown).toBe(2))
+  it('has correct behaviorType', () => expect(ARCANE_BURST.behaviorType).toBe('projectile'))
+  it('has correct projectileSpeed', () => expect(ARCANE_BURST.projectileSpeed).toBe(200))
+  it('has correct projectileSize', () => expect(ARCANE_BURST.projectileSize).toBe(3))
+  it('has correct projectileCount of 3', () => expect(ARCANE_BURST.projectileCount).toBe(3))
+  it('has correct spreadAngle of 15', () => expect(ARCANE_BURST.spreadAngle).toBe(15))
+  it('is not an ultimate', () => expect(ARCANE_BURST.isUltimate).toBe(false))
+  it('has projectile and damage tags', () => {
+    expect(ARCANE_BURST.tags).toContain('projectile')
+    expect(ARCANE_BURST.tags).toContain('damage')
+  })
+  it('has a yellow color', () => expect(ARCANE_BURST.color).toBe('#ffff00'))
 })
 
 describe('ICE_SHARD definition', () => {
