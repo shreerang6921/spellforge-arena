@@ -1,6 +1,8 @@
 import { RESOLUTION_W, RESOLUTION_H, COLORS, ARENA } from '../config/constants.js'
 import { Player } from './Player.js'
 import { InputHandler } from './InputHandler.js'
+import { runCollision } from './CollisionSystem.js'
+import { computeAimDirection } from './AimAssist.js'
 
 export class GameEngine {
   constructor(canvas) {
@@ -17,6 +19,7 @@ export class GameEngine {
     this.player = null
     this.bot    = null
     this.inputHandler = null
+    this.projectiles = []
   }
 
   init() {
@@ -59,12 +62,37 @@ export class GameEngine {
   update(dt) {
     this.player.update(dt)
     this.bot.update(dt)
+
+    // Handle player basic attack input
+    if (this.inputHandler && this.player.input.attack) {
+      const dir = computeAimDirection(
+        this.player.position,
+        this.inputHandler.mouse,
+        this.bot.isDead ? null : this.bot.position
+      )
+      const proj = this.player.tryBasicAttack(dir)
+      if (proj) this.projectiles.push(proj)
+    }
+
+    // Update all projectiles
+    for (const proj of this.projectiles) {
+      proj.update(dt)
+    }
+
+    // Collision detection
+    runCollision(this.projectiles, [this.player, this.bot])
+
+    // Remove inactive projectiles
+    this.projectiles = this.projectiles.filter(p => p.active)
   }
 
   render(ctx) {
     this._drawArena(ctx)
     this._drawPlayer(ctx, this.player)
     this._drawPlayer(ctx, this.bot)
+    for (const proj of this.projectiles) {
+      this._drawProjectile(ctx, proj)
+    }
     this._drawHUD(ctx)
   }
 
@@ -99,6 +127,13 @@ export class GameEngine {
     this._drawBar(ctx,  2,  8, 60, 4, this.player.mana  / this.player.maxMana,  COLORS.MANA_BAR, COLORS.MANA_BG)
     this._drawBar(ctx, 258, 2, 60, 4, this.bot.hp       / this.bot.maxHp,       COLORS.HP_BAR,   COLORS.HP_BG)
     this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana     / this.bot.maxMana,     COLORS.MANA_BAR, COLORS.MANA_BG)
+  }
+
+  _drawProjectile(ctx, proj) {
+    ctx.fillStyle = COLORS.PROJECTILE_BASIC
+    const x = Math.round(proj.position.x - proj.size.w / 2)
+    const y = Math.round(proj.position.y - proj.size.h / 2)
+    ctx.fillRect(x, y, proj.size.w, proj.size.h)
   }
 
   _drawBar(ctx, x, y, w, h, ratio, fill, bg) {

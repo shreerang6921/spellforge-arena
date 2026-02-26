@@ -13,13 +13,17 @@ export class InputHandler {
       right: keybindings?.right ?? 'KeyD',
     }
 
-    this._onKeyDown = this._onKeyDown.bind(this)
-    this._onKeyUp   = this._onKeyUp.bind(this)
+    this._onKeyDown   = this._onKeyDown.bind(this)
+    this._onKeyUp     = this._onKeyUp.bind(this)
     this._onMouseMove = this._onMouseMove.bind(this)
+    this._onMouseDown = this._onMouseDown.bind(this)
+    this._onMouseUp   = this._onMouseUp.bind(this)
 
     window.addEventListener('keydown', this._onKeyDown)
     window.addEventListener('keyup',   this._onKeyUp)
     canvas.addEventListener('mousemove', this._onMouseMove)
+    canvas.addEventListener('mousedown', this._onMouseDown)
+    canvas.addEventListener('mouseup',   this._onMouseUp)
   }
 
   _onKeyDown(e) {
@@ -46,9 +50,19 @@ export class InputHandler {
     this.mouse.y = Math.round((e.clientY - rect.top)  * scaleY)
   }
 
+  _onMouseDown(e) {
+    if (e.button === 0) this.player.input.attack = true
+  }
+
+  _onMouseUp(e) {
+    if (e.button === 0) this.player.input.attack = false
+  }
+
   destroy() {
     window.removeEventListener('keydown', this._onKeyDown)
     window.removeEventListener('keyup',   this._onKeyUp)
     this.canvas.removeEventListener('mousemove', this._onMouseMove)
+    this.canvas.removeEventListener('mousedown', this._onMouseDown)
+    this.canvas.removeEventListener('mouseup',   this._onMouseUp)
   }
 }

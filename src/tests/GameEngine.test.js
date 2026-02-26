@@ -106,6 +106,68 @@ describe('GameEngine — update', () => {
   })
 })
 
+describe('GameEngine — projectile management', () => {
+  it('projectiles list is empty after init()', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    expect(engine.projectiles).toEqual([])
+  })
+
+  it('creates a projectile when player.input.attack is true and cooldown is 0', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.input.attack = true
+    engine.update(0.016)
+    expect(engine.projectiles.length).toBe(1)
+  })
+
+  it('does not create a projectile when attack input is false', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.input.attack = false
+    engine.update(0.016)
+    expect(engine.projectiles.length).toBe(0)
+  })
+
+  it('does not create a second projectile while cooldown is active', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.input.attack = true
+    engine.update(0.016) // fires
+    engine.update(0.016) // still in cooldown
+    expect(engine.projectiles.length).toBe(1)
+  })
+
+  it('projectiles are updated each frame (position changes)', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.input.attack = true
+    engine.update(0.016) // fires
+    const x0 = engine.projectiles[0].position.x
+    engine.player.input.attack = false
+    engine.update(0.1)
+    expect(engine.projectiles[0].position.x).not.toBe(x0)
+  })
+
+  it('removes inactive projectiles after update', () => {
+    const { canvas } = makeMockCanvas()
+    const engine = new GameEngine(canvas)
+    engine.init()
+    engine.player.input.attack = true
+    engine.update(0.016)
+    // Force expire the projectile
+    engine.projectiles[0].active = false
+    engine.player.input.attack = false
+    engine.update(0.016)
+    expect(engine.projectiles.length).toBe(0)
+  })
+})
+
 describe('GameEngine — render', () => {
   it('calls fillRect at least once (arena background)', () => {
     const { canvas, ctx } = makeMockCanvas()

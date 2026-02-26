@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Player } from '../game/Player.js'
-import { PLAYER, ARENA } from '../config/constants.js'
+import { Projectile } from '../game/Projectile.js'
+import { SpellInstance } from '../game/spells/SpellInstance.js'
+import { PLAYER, ARENA, BASIC_ATTACK } from '../config/constants.js'
+
+const fireDef = { id: 'fireball', baseDamage: 20, manaCost: 15, castTime: 0.3, cooldown: 2 }
+const zeroCostDef = { id: 'free', baseDamage: 10, manaCost: 0, castTime: 0, cooldown: 1 }
+const bigCostDef  = { id: 'expensive', baseDamage: 50, manaCost: 200, castTime: 0, cooldown: 1 }
 
 function makePlayer(overrides = {}) {
   return new Player({ x: 160, y: 90, color: '#fff', ...overrides })
@@ -186,6 +192,184 @@ describe('Player — mana regen', () => {
     p.mana = PLAYER.MAX_MANA
     p.update(10)
     expect(p.mana).toBe(PLAYER.MAX_MANA)
+  })
+})
+
+describe('Player — basic attack (tryBasicAttack)', () => {
+  const dir = { x: 1, y: 0 }
+
+  it('attackCooldown initialises to 0', () => {
+    const p = makePlayer()
+    expect(p.attackCooldown).toBe(0)
+  })
+
+  it('returns a Projectile when cooldown is 0', () => {
+    const p = makePlayer()
+    const proj = p.tryBasicAttack(dir)
+    expect(proj).toBeInstanceOf(Projectile)
+  })
+
+  it('projectile has correct damage', () => {
+    const p = makePlayer()
+    const proj = p.tryBasicAttack(dir)
+    expect(proj.damage).toBe(BASIC_ATTACK.DAMAGE)
+  })
+
+  it('projectile has correct size', () => {
+    const p = makePlayer()
+    const proj = p.tryBasicAttack(dir)
+    expect(proj.size).toEqual({ w: BASIC_ATTACK.SIZE, h: BASIC_ATTACK.SIZE })
+  })
+
+  it('projectile velocity reflects direction and speed', () => {
+    const p = makePlayer()
+    const proj = p.tryBasicAttack(dir)
+    expect(proj.velocity.x).toBeCloseTo(BASIC_ATTACK.SPEED)
+    expect(proj.velocity.y).toBeCloseTo(0)
+  })
+
+  it('projectile owner is the player', () => {
+    const p = makePlayer()
+    const proj = p.tryBasicAttack(dir)
+    expect(proj.owner).toBe(p)
+  })
+
+  it('projectile spawns at player position', () => {
+    const p = makePlayer({ x: 80, y: 90 })
+    const proj = p.tryBasicAttack(dir)
+    expect(proj.position.x).toBe(80)
+    expect(proj.position.y).toBe(90)
+  })
+
+  it('sets attackCooldown after firing', () => {
+    const p = makePlayer()
+    p.tryBasicAttack(dir)
+    expect(p.attackCooldown).toBeCloseTo(BASIC_ATTACK.COOLDOWN)
+  })
+
+  it('returns null when cooldown > 0', () => {
+    const p = makePlayer()
+    p.tryBasicAttack(dir)           // fire once, sets cooldown
+    const proj = p.tryBasicAttack(dir)  // should be blocked
+    expect(proj).toBeNull()
+  })
+
+  it('returns null when player is dead', () => {
+    const p = makePlayer()
+    p.takeDamage(100)
+    const proj = p.tryBasicAttack(dir)
+    expect(proj).toBeNull()
+  })
+
+  it('attackCooldown decrements over time', () => {
+    const p = makePlayer()
+    p.tryBasicAttack(dir)
+    const before = p.attackCooldown
+    p.update(0.1)
+    expect(p.attackCooldown).toBeLessThan(before)
+  })
+
+  it('attackCooldown does not go below 0', () => {
+    const p = makePlayer()
+    p.tryBasicAttack(dir)
+    p.update(10)
+    expect(p.attackCooldown).toBe(0)
+  })
+
+  it('can attack again after cooldown expires', () => {
+    const p = makePlayer()
+    p.tryBasicAttack(dir)
+    p.update(BASIC_ATTACK.COOLDOWN + 0.1)
+    const proj = p.tryBasicAttack(dir)
+    expect(proj).toBeInstanceOf(Projectile)
+  })
+})
+
+describe('Player — castSpell', () => {
+  it('returns false when player is dead', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.takeDamage(100)
+    expect(p.castSpell(0)).toBe(false)
+  })
+
+  it('returns false when slot is empty', () => {
+    const p = makePlayer()
+    expect(p.castSpell(0)).toBe(false)
+  })
+
+  it('returns false when mana is insufficient', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(bigCostDef)
+    expect(p.castSpell(0)).toBe(false)
+  })
+
+  it('returns false when spell is on cooldown', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    expect(p.castSpell(0)).toBe(false)
+  })
+
+  it('returns true on a successful cast', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    expect(p.castSpell(0)).toBe(true)
+  })
+
+  it('deducts mana on a successful cast', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    expect(p.mana).toBe(PLAYER.MAX_MANA - fireDef.manaCost)
+  })
+
+  it('sets cooldown on a successful cast', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    expect(p.cooldowns['fireball']).toBeCloseTo(fireDef.cooldown)
+  })
+
+  it('allows casting a zero-cost spell with 0 mana', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(zeroCostDef)
+    p.mana = 0
+    expect(p.castSpell(0)).toBe(true)
+  })
+
+  it('spell cooldowns tick down over time', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    const before = p.cooldowns['fireball']
+    p.update(0.5)
+    expect(p.cooldowns['fireball']).toBeLessThan(before)
+  })
+
+  it('spell cooldown does not go below 0', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    p.update(100)
+    expect(p.cooldowns['fireball']).toBe(0)
+  })
+
+  it('can cast again after cooldown expires', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    p.update(fireDef.cooldown + 0.1)
+    expect(p.castSpell(0)).toBe(true)
+  })
+
+  it('mana is not deducted on a failed cast (cooldown blocked)', () => {
+    const p = makePlayer()
+    p.deck[0] = new SpellInstance(fireDef)
+    p.castSpell(0)
+    const manaAfterFirst = p.mana
+    p.castSpell(0)
+    expect(p.mana).toBe(manaAfterFirst)
   })
 })
 
