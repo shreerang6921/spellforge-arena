@@ -123,7 +123,11 @@ export class Player {
     if (!this.pendingCast) return
     this.pendingCast.timeRemaining -= dt
     if (this.pendingCast.timeRemaining <= 0) {
-      this.completedCast = { spell: this.pendingCast.spell, direction: this.pendingCast.direction }
+      this.completedCast = {
+        spell: this.pendingCast.spell,
+        direction: this.pendingCast.direction,
+        targetPos: this.pendingCast.targetPos ?? null,
+      }
       this.pendingCast = null
       this.setState('idle')
     }
@@ -188,7 +192,7 @@ export class Player {
 
   // --- Spell casting ---
 
-  castSpell(slotIndex, direction = { x: 1, y: 0 }) {
+  castSpell(slotIndex, direction = { x: 1, y: 0 }, targetPos = null) {
     if (this.isDead) return false
     if (this.pendingCast) return false
     const spell = this.deck[slotIndex]
@@ -210,10 +214,10 @@ export class Player {
     }
 
     if (spell.computedCastTime > 0) {
-      this.pendingCast = { spell, direction, timeRemaining: spell.computedCastTime }
+      this.pendingCast = { spell, direction, targetPos, timeRemaining: spell.computedCastTime }
       this.setState('cast')
     } else {
-      this.completedCast = { spell, direction }
+      this.completedCast = { spell, direction, targetPos }
     }
     return true
   }

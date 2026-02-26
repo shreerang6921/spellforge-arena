@@ -13,6 +13,8 @@ import {
   METEOR, ARCANE_OVERLOAD, TEMPORAL_RESET,
 } from './spells/SpellDefinitions.js'
 import { EMPOWER } from './spells/ModifierDefinitions.js'
+import { BotAI } from './BotAI.js'
+import { createBotDeck } from '../config/botDeck.js'
 
 export class GameEngine {
   constructor(canvas) {
@@ -28,6 +30,7 @@ export class GameEngine {
 
     this.player = null
     this.bot = null
+    this.botAI = null
     this.inputHandler = null
     this.projectiles = []
     this.aoeZones = []
@@ -59,6 +62,10 @@ export class GameEngine {
     // Slot 8: Meteor (ult)          → 1.5s delay, expanding ring warning, 60 dmg
     this.player.deck[7] = new SpellInstance(METEOR)
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Bot deck + AI (Phase 8)
+    this.bot.deck = createBotDeck()
+    this.botAI = new BotAI(this.bot, this.player)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
   }
@@ -126,10 +133,17 @@ export class GameEngine {
       }
     }
 
-    // Process completed casts (all behavior types)
+    // Tick Bot AI (Phase 8)
+    if (this.botAI) this.botAI.update(dt)
+
+    // Process completed casts — player first, then bot
     if (this.player.completedCast) {
       this._processCompletedCast(this.player.completedCast, this.player)
       this.player.completedCast = null
+    }
+    if (this.bot.completedCast) {
+      this._processCompletedCast(this.bot.completedCast, this.bot)
+      this.bot.completedCast = null
     }
 
     // Update projectiles and AoE zones
@@ -173,8 +187,8 @@ export class GameEngine {
       }
       case 'aoe': {
         if (def.meteorDelay) {
-          // Meteor: queue a delayed strike instead of an immediate AoE zone
-          const pos = this.inputHandler ? this.inputHandler.mouse : owner.position
+          // Meteor: queue a delayed strike — use provided targetPos, else cursor
+          const pos = completedCast.targetPos ?? (this.inputHandler ? this.inputHandler.mouse : owner.position)
           const dmg = this._applyOverloadBonus(spell.computedDamage, def, owner)
           this.pendingMeteors.push({
             x: pos.x, y: pos.y,
@@ -284,8 +298,8 @@ export class GameEngine {
   _spawnAoEZone(completedCast, owner) {
     const { spell } = completedCast
     const def = spell.definition
-    // Place at cursor if available, otherwise at owner position
-    const pos = this.inputHandler ? this.inputHandler.mouse : owner.position
+    // targetPos (set by BotAI) takes priority; then cursor; then owner position
+    const pos = completedCast.targetPos ?? (this.inputHandler ? this.inputHandler.mouse : owner.position)
     const dmg = this._applyOverloadBonus(spell.computedDamage, def, owner)
     const dur = spell.extendedDuration ? (def.aoeDuration ?? 0) * 1.5 : (def.aoeDuration ?? 0)
     this.aoeZones.push(new AoEZone({
