@@ -1,6 +1,9 @@
 import { RESOLUTION_W, RESOLUTION_H } from '../config/constants.js'
 
+const SPELL_KEYS = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8']
+
 export class InputHandler {
+  static SPELL_KEYS = SPELL_KEYS
   constructor(canvas, player, keybindings) {
     this.canvas = canvas
     this.player = player
@@ -39,6 +42,9 @@ export class InputHandler {
     if (code === this.keys.down)  this.player.input.down  = value
     if (code === this.keys.left)  this.player.input.left  = value
     if (code === this.keys.right) this.player.input.right = value
+
+    const slot = InputHandler.SPELL_KEYS.indexOf(code)
+    if (slot !== -1) this.player.input.spellSlots[slot] = value
   }
 
   _onMouseMove(e) {

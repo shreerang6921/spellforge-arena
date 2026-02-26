@@ -1,0 +1,15 @@
+export const FIREBALL = {
+  id: 'fireball',
+  name: 'Fireball',
+  baseDamage: 20,
+  manaCost: 15,
+  castTime: 0.3,
+  cooldown: 0,
+  behaviorType: 'projectile',
+  projectileSpeed: 150,
+  projectileSize: 5,
+  projectileLifetime: 3,
+  color: '#ff6600',
+  isUltimate: false,
+  tags: ['projectile', 'damage'],
+}

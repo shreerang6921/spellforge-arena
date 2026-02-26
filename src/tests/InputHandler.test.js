@@ -154,6 +154,45 @@ describe('InputHandler — mouse click (attack)', () => {
   })
 })
 
+describe('InputHandler — spell slot keys', () => {
+  it('sets spellSlots[0]=true on Digit1 keydown', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const handler = new InputHandler(canvas, player)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }))
+    expect(player.input.spellSlots[0]).toBe(true)
+    handler.destroy()
+  })
+
+  it('clears spellSlots[0] on Digit1 keyup', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const handler = new InputHandler(canvas, player)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }))
+    window.dispatchEvent(new KeyboardEvent('keyup',   { code: 'Digit1' }))
+    expect(player.input.spellSlots[0]).toBe(false)
+    handler.destroy()
+  })
+
+  it('sets spellSlots[7]=true on Digit8 keydown', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const handler = new InputHandler(canvas, player)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit8' }))
+    expect(player.input.spellSlots[7]).toBe(true)
+    handler.destroy()
+  })
+
+  it('does not affect spellSlots for non-spell keys', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const handler = new InputHandler(canvas, player)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ' }))
+    expect(player.input.spellSlots.every(v => v === false)).toBe(true)
+    handler.destroy()
+  })
+})
+
 describe('InputHandler — custom keybindings', () => {
   it('respects custom keybinding for up', () => {
     const player = makePlayer()
