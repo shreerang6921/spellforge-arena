@@ -10,14 +10,16 @@ import {
   FIREBALL, ICE_SHARD, ARCANE_BURST, BLOOD_LANCE,
   GROUND_FLAME, DASH, BLINK_STRIKE, PHASE_WALK,
   HEALING_PULSE, MANA_SURGE, SPELL_ECHO, ARCANE_BEAM,
+  METEOR, ARCANE_OVERLOAD, TEMPORAL_RESET,
 } from './spells/SpellDefinitions.js'
+import { EMPOWER } from './spells/ModifierDefinitions.js'
 
 export class GameEngine {
   constructor(canvas) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
 
-    canvas.width  = RESOLUTION_W
+    canvas.width = RESOLUTION_W
     canvas.height = RESOLUTION_H
 
     this.running = false
@@ -25,28 +27,38 @@ export class GameEngine {
     this._rafId = null
 
     this.player = null
-    this.bot    = null
+    this.bot = null
     this.inputHandler = null
     this.projectiles = []
-    this.aoeZones    = []
+    this.aoeZones = []
+    this.pendingMeteors = []  // { x, y, delay, owner, damage, radius }
 
     this.arcaneBeamActive = false
-    this.arcaneBeamDir    = null
+    this.arcaneBeamDir = null
   }
 
   init() {
-    this.player = new Player({ x: 80,  y: 90, color: COLORS.PLAYER1, isBot: false })
-    this.bot    = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true  })
+    this.player = new Player({ x: 80, y: 90, color: COLORS.PLAYER1, isBot: false })
+    this.bot = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true })
 
-    // Temporary deck — will be replaced by Deck Forge in Phase 10
-    this.player.deck[0] = new SpellInstance(FIREBALL)
+    // ── Test deck (Phases 5–7) — replaced by Deck Forge in Phase 10 ──────────
+    // Slot 1: Fireball + Empower    → modifier test: +20% dmg = 24
+    this.player.deck[0] = new SpellInstance(FIREBALL, [EMPOWER])
+    // Slot 2: Ice Shard             → slow on hit (1.5s, 15% speed reduction)
     this.player.deck[1] = new SpellInstance(ICE_SHARD)
-    this.player.deck[2] = new SpellInstance(ARCANE_BURST)
+    // Slot 3: Arcane Beam           → hold key to channel hitscan beam
+    this.player.deck[2] = new SpellInstance(ARCANE_BEAM)
+    // Slot 4: Blood Lance           → HP-only cost (5 HP, 0 mana)
     this.player.deck[3] = new SpellInstance(BLOOD_LANCE)
-    this.player.deck[4] = new SpellInstance(GROUND_FLAME)
-    this.player.deck[5] = new SpellInstance(DASH)
-    this.player.deck[6] = new SpellInstance(HEALING_PULSE)
-    this.player.deck[7] = new SpellInstance(MANA_SURGE)
+    // Slot 5: Spell Echo            → buff: next spell fires twice (100% + 50%)
+    this.player.deck[4] = new SpellInstance(SPELL_ECHO)
+    // Slot 6: Temporal Reset (ult)  → wipes all non-ultimate cooldowns instantly
+    this.player.deck[5] = new SpellInstance(TEMPORAL_RESET)
+    // Slot 7: Phase Walk            → speed buff + cyan tint for 3s
+    this.player.deck[6] = new SpellInstance(PHASE_WALK)
+    // Slot 8: Meteor (ult)          → 1.5s delay, expanding ring warning, 60 dmg
+    this.player.deck[7] = new SpellInstance(METEOR)
+    // ─────────────────────────────────────────────────────────────────────────
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
   }
@@ -122,14 +134,20 @@ export class GameEngine {
 
     // Update projectiles and AoE zones
     for (const proj of this.projectiles) proj.update(dt)
-    for (const zone of this.aoeZones)    zone.update(dt, [this.player, this.bot])
+    for (const zone of this.aoeZones) zone.update(dt, [this.player, this.bot])
+
+    // Tick pending Meteor strikes
+    this._tickPendingMeteors(dt)
+
+    // Tick Lingering Burn DoTs
+    this._tickActiveBurns(dt)
 
     // Collision detection (projectiles only — AoE handles its own damage)
     runCollision(this.projectiles, [this.player, this.bot])
 
     // Cleanup
     this.projectiles = this.projectiles.filter(p => p.active)
-    this.aoeZones    = this.aoeZones.filter(z => z.active)
+    this.aoeZones = this.aoeZones.filter(z => z.active)
   }
 
   // ─── Spell execution ────────────────────────────────────────────────────────
@@ -154,10 +172,25 @@ export class GameEngine {
         break
       }
       case 'aoe': {
-        this._spawnAoEZone(completedCast, owner)
-        if (wasEchoActive) {
-          const echo = { definition: def, computedDamage: spell.computedDamage * 0.5 }
-          this._spawnAoEZone({ spell: echo, direction }, owner)
+        if (def.meteorDelay) {
+          // Meteor: queue a delayed strike instead of an immediate AoE zone
+          const pos = this.inputHandler ? this.inputHandler.mouse : owner.position
+          const dmg = this._applyOverloadBonus(spell.computedDamage, def, owner)
+          this.pendingMeteors.push({
+            x: pos.x, y: pos.y,
+            delay: def.meteorDelay,
+            totalDelay: def.meteorDelay,
+            owner,
+            damage: dmg,
+            radius: def.aoeRadius,
+            color: def.color,
+          })
+        } else {
+          this._spawnAoEZone(completedCast, owner)
+          if (wasEchoActive) {
+            const echo = { definition: def, computedDamage: spell.computedDamage * 0.5 }
+            this._spawnAoEZone({ spell: echo, direction }, owner)
+          }
         }
         break
       }
@@ -185,16 +218,46 @@ export class GameEngine {
     const def = spell.definition
     if (def.behaviorType !== 'projectile') return []
 
-    const onHit = def.slowDuration
-      ? (target) => target.applySlowEffect(def.slowDuration)
-      : null
+    const baseDmg = this._applyOverloadBonus(spell.computedDamage, def, owner)
 
-    const count     = def.projectileCount ?? 1
-    const spreadRad = ((def.spreadAngle ?? 0) * Math.PI) / 180
+    // Build onHit callback: slow + lifesteal + lingeringBurn all chain together
+    const buildOnHit = (damage) => {
+      const fns = []
+      if (def.slowDuration) {
+        fns.push((target) => target.applySlowEffect(def.slowDuration))
+      }
+      if (spell.lifesteal > 0) {
+        const healAmt = Math.floor(damage * spell.lifesteal)
+        fns.push(() => { if (healAmt > 0) owner.heal(healAmt) })
+      }
+      if (spell.lingeringBurn) {
+        const burn = spell.lingeringBurn
+        fns.push((target) => {
+          // Apply DoT as a series of timed damage ticks via a pending burn list
+          this._activeBurns = this._activeBurns || []
+          this._activeBurns.push({
+            target, owner,
+            dps: burn.damagePerSecond,
+            remaining: burn.duration,
+          })
+        })
+      }
+      return fns.length ? (target) => fns.forEach(fn => fn(target)) : null
+    }
+
+    // Determine fire pattern: Split modifier overrides base projectileCount
+    let angleOffsets
+    if (spell.splitEnabled) {
+      const splitRad = (15 * Math.PI) / 180
+      angleOffsets = [-splitRad, splitRad]
+    } else {
+      const count = def.projectileCount ?? 1
+      const spreadRad = ((def.spreadAngle ?? 0) * Math.PI) / 180
+      angleOffsets = Array.from({ length: count }, (_, i) => (i - Math.floor(count / 2)) * spreadRad)
+    }
+
     const projectiles = []
-
-    for (let i = 0; i < count; i++) {
-      const angleOffset = (i - Math.floor(count / 2)) * spreadRad
+    for (const angleOffset of angleOffsets) {
       const cos = Math.cos(angleOffset)
       const sin = Math.sin(angleOffset)
       const vx = direction.x * cos - direction.y * sin
@@ -204,14 +267,14 @@ export class GameEngine {
         y: owner.position.y,
         vx: vx * def.projectileSpeed,
         vy: vy * def.projectileSpeed,
-        damage: spell.computedDamage,
+        damage: baseDmg,
         owner,
-        size:  def.projectileSize,
+        size: def.projectileSize,
         sizeH: def.projectileSizeH,
-        type:  def.id,
+        type: def.id,
         lifetime: def.projectileLifetime,
         color: def.color,
-        onHit,
+        onHit: buildOnHit(baseDmg),
       }))
     }
 
@@ -223,13 +286,15 @@ export class GameEngine {
     const def = spell.definition
     // Place at cursor if available, otherwise at owner position
     const pos = this.inputHandler ? this.inputHandler.mouse : owner.position
+    const dmg = this._applyOverloadBonus(spell.computedDamage, def, owner)
+    const dur = spell.extendedDuration ? (def.aoeDuration ?? 0) * 1.5 : (def.aoeDuration ?? 0)
     this.aoeZones.push(new AoEZone({
-      x:        pos.x,
-      y:        pos.y,
-      radius:   def.aoeRadius,
-      damage:   spell.computedDamage,
+      x: pos.x,
+      y: pos.y,
+      radius: def.aoeRadius,
+      damage: dmg,
       tickRate: def.aoeTickRate,
-      duration: def.aoeDuration,
+      duration: dur,
       owner,
       color: def.color,
     }))
@@ -257,8 +322,8 @@ export class GameEngine {
 
       // Clamp teleport destination to arena
       const half = owner.size / 2
-      tx = Math.max(ARENA.LEFT + half, Math.min(ARENA.RIGHT  - half, tx))
-      ty = Math.max(ARENA.TOP  + half, Math.min(ARENA.BOTTOM - half, ty))
+      tx = Math.max(ARENA.LEFT + half, Math.min(ARENA.RIGHT - half, tx))
+      ty = Math.max(ARENA.TOP + half, Math.min(ARENA.BOTTOM - half, ty))
 
       owner.position.x = tx
       owner.position.y = ty
@@ -289,6 +354,8 @@ export class GameEngine {
       owner.applyPhaseWalk(def.duration)
     } else if (def.id === 'spell_echo') {
       owner.spellEchoActive = true
+    } else if (def.id === 'arcane_overload') {
+      owner.applyArcaneOverload(def.duration)
     }
     // arcane_beam is handled separately via _handleArcaneBeam
   }
@@ -303,6 +370,56 @@ export class GameEngine {
     if (def.manaRestore) {
       owner.mana = Math.min(owner.maxMana, owner.mana + def.manaRestore)
     }
+    if (def.id === 'temporal_reset') {
+      // Reset all non-ultimate spell cooldowns to 0
+      for (const id in owner.cooldowns) {
+        const deckinst = owner.deck.find(s => s?.definition.id === id)
+        if (deckinst && !deckinst.definition.isUltimate) {
+          owner.cooldowns[id] = 0
+        }
+      }
+    }
+  }
+
+  // Applies Arcane Overload +50% damage bonus when the buff is active
+  // Only boosts spells tagged with 'damage'
+  _applyOverloadBonus(baseDamage, def, owner) {
+    if (owner.arcaneOverloadActive && def.tags?.includes('damage') && baseDamage > 0) {
+      return Math.round(baseDamage * 1.5)
+    }
+    return baseDamage
+  }
+
+  // Ticks pending Meteor strikes; spawns AoE at impact
+  _tickPendingMeteors(dt) {
+    for (const m of this.pendingMeteors) {
+      m.delay -= dt
+      if (m.delay <= 0) {
+        m.done = true
+        // Impact: immediate full-damage AoE
+        const targets = [this.player, this.bot].filter(p => p !== m.owner && !p.isDead)
+        for (const target of targets) {
+          const dx = target.position.x - m.x
+          const dy = target.position.y - m.y
+          if (Math.sqrt(dx * dx + dy * dy) < m.radius + target.size / 2) {
+            target.takeDamage(m.damage)
+          }
+        }
+      }
+    }
+    this.pendingMeteors = this.pendingMeteors.filter(m => !m.done)
+  }
+
+  _tickActiveBurns(dt) {
+    if (!this._activeBurns || this._activeBurns.length === 0) return
+    for (const burn of this._activeBurns) {
+      if (burn.target.isDead) { burn.remaining = 0; continue }
+      burn.remaining -= dt
+      if (burn.remaining > 0) {
+        burn.target.takeDamage(burn.dps * dt)
+      }
+    }
+    this._activeBurns = this._activeBurns.filter(b => b.remaining > 0)
   }
 
   _handleArcaneBeam(dt, dir) {
@@ -310,22 +427,22 @@ export class GameEngine {
       const spell = this.player.deck[i]
       if (!spell || spell.definition.id !== 'arcane_beam') continue
 
-      const keyHeld    = this.player.input.spellSlots[i]
-      const def        = spell.definition
+      const keyHeld = this.player.input.spellSlots[i]
+      const def = spell.definition
       const canChannel = keyHeld && !this.player.isDead && !this.player.pendingCast && this.player.mana > 0
 
       if (canChannel) {
         this.player.mana = Math.max(0, this.player.mana - def.beamManaCostPerSecond * dt)
         this.player.setState('cast')
         this.arcaneBeamActive = true
-        this.arcaneBeamDir    = dir
+        this.arcaneBeamDir = dir
 
         // Hitscan: damage bot if within range and in beam direction
         if (!this.bot.isDead) {
-          const dx   = this.bot.position.x - this.player.position.x
-          const dy   = this.bot.position.y - this.player.position.y
+          const dx = this.bot.position.x - this.player.position.x
+          const dy = this.bot.position.y - this.player.position.y
           const dist = Math.sqrt(dx * dx + dy * dy)
-          const dot  = dx * dir.x + dy * dir.y
+          const dot = dx * dir.x + dy * dir.y
           if (dist <= def.beamMaxRange && dot > 0) {
             this.bot.takeDamage(def.beamDamagePerSecond * dt)
           }
@@ -333,7 +450,7 @@ export class GameEngine {
       } else if (this.arcaneBeamActive) {
         // Key released or conditions lost — stop beam
         this.arcaneBeamActive = false
-        this.arcaneBeamDir    = null
+        this.arcaneBeamDir = null
         if (this.player.stateMachine.name === 'cast') {
           this.player.setState('idle')
         }
@@ -347,6 +464,7 @@ export class GameEngine {
   render(ctx) {
     this._drawArena(ctx)
     for (const zone of this.aoeZones) this._drawAoEZone(ctx, zone)
+    for (const m of this.pendingMeteors) this._drawMeteorWarning(ctx, m)
     this._drawPlayer(ctx, this.player)
     this._drawPlayer(ctx, this.bot)
     for (const proj of this.projectiles) this._drawProjectile(ctx, proj)
@@ -364,7 +482,7 @@ export class GameEngine {
     ctx.strokeRect(
       ARENA.LEFT,
       ARENA.TOP,
-      ARENA.RIGHT  - ARENA.LEFT,
+      ARENA.RIGHT - ARENA.LEFT,
       ARENA.BOTTOM - ARENA.TOP
     )
   }
@@ -382,13 +500,20 @@ export class GameEngine {
       ctx.fillStyle = '#66ffff'
       ctx.fillRect(x - 1, y - 1, player.size + 2, player.size + 2)
     }
+
+    // Arcane Overload glow (magenta outline)
+    if (player.arcaneOverloadActive) {
+      ctx.strokeStyle = '#ff44ff'
+      ctx.lineWidth = 1
+      ctx.strokeRect(x - 1, y - 1, player.size + 2, player.size + 2)
+    }
   }
 
   _drawHUD(ctx) {
-    this._drawBar(ctx,  2,  2, 60, 4, this.player.hp    / this.player.maxHp,    COLORS.HP_BAR,   COLORS.HP_BG)
-    this._drawBar(ctx,  2,  8, 60, 4, this.player.mana  / this.player.maxMana,  COLORS.MANA_BAR, COLORS.MANA_BG)
-    this._drawBar(ctx, 258, 2, 60, 4, this.bot.hp       / this.bot.maxHp,       COLORS.HP_BAR,   COLORS.HP_BG)
-    this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana     / this.bot.maxMana,     COLORS.MANA_BAR, COLORS.MANA_BG)
+    this._drawBar(ctx, 2, 2, 60, 4, this.player.hp / this.player.maxHp, COLORS.HP_BAR, COLORS.HP_BG)
+    this._drawBar(ctx, 2, 8, 60, 4, this.player.mana / this.player.maxMana, COLORS.MANA_BAR, COLORS.MANA_BG)
+    this._drawBar(ctx, 258, 2, 60, 4, this.bot.hp / this.bot.maxHp, COLORS.HP_BAR, COLORS.HP_BG)
+    this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana / this.bot.maxMana, COLORS.MANA_BAR, COLORS.MANA_BG)
   }
 
   _drawProjectile(ctx, proj) {
@@ -410,6 +535,21 @@ export class GameEngine {
     )
   }
 
+  _drawMeteorWarning(ctx, m) {
+    // Draw an expanding ring that fills to full radius as the meteor falls
+    const progress = 1 - (m.delay / m.totalDelay)   // 0 → 1 as delay counts down
+    const r = Math.round(m.radius * progress)
+    if (r < 1) return
+    ctx.strokeStyle = m.color
+    ctx.lineWidth = 1
+    ctx.strokeRect(Math.round(m.x - r), Math.round(m.y - r), r * 2, r * 2)
+    // Inner flash as it's about to hit
+    if (progress > 0.75) {
+      ctx.fillStyle = `rgba(255,68,0,${(progress - 0.75) * 2})`
+      ctx.fillRect(Math.round(m.x - r), Math.round(m.y - r), r * 2, r * 2)
+    }
+  }
+
   _drawArcaneBeam(ctx) {
     if (!this.arcaneBeamActive || !this.arcaneBeamDir) return
     // Draw beam as a narrow rect — avoids ctx.beginPath/lineTo which aren't mocked in tests
@@ -421,15 +561,15 @@ export class GameEngine {
     // Simple thin horizontal/vertical rect approximation using fillRect
     const midX = Math.round((x1 + x2) / 2)
     const midY = Math.round((y1 + y2) / 2)
-    const len  = Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+    const len = Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
     ctx.fillStyle = '#aa44ff'
     ctx.fillRect(Math.round(x1), Math.round(y1), Math.max(len, 1), 2)
     void midX; void midY  // suppress unused warning
   }
 
   _drawDeck(ctx) {
-    const SLOT  = 14
-    const GAP   = 2
+    const SLOT = 14
+    const GAP = 2
     const SLOTS = 8
     const totalW = SLOTS * SLOT + (SLOTS - 1) * GAP
     const startX = Math.floor((RESOLUTION_W - totalW) / 2)
@@ -446,7 +586,7 @@ export class GameEngine {
         ctx.fillStyle = spell.definition.color
         ctx.fillRect(x + 1, y + 1, SLOT - 2, SLOT - 2)
 
-        const cd    = this.player.cooldowns[spell.definition.id] ?? 0
+        const cd = this.player.cooldowns[spell.definition.id] ?? 0
         const total = spell.computedCooldown
         if (cd > 0 && total > 0) {
           const ratio = cd / total
@@ -479,7 +619,7 @@ export class GameEngine {
       for (let i = 0; i < SLOTS; i++) {
         const sx = startX + i * (SLOT + GAP)
         if (mouse.x < sx || mouse.x >= sx + SLOT) continue
-        if (mouse.y < y  || mouse.y >= y  + SLOT) continue
+        if (mouse.y < y || mouse.y >= y + SLOT) continue
         const spell = this.player.deck[i]
         if (!spell) break
 
@@ -487,7 +627,7 @@ export class GameEngine {
         ctx.font = '5px monospace'
         // measureText may not exist in test environments — fall back to char-width estimate
         const charW = ctx.measureText ? ctx.measureText(name).width : name.length * 3.5
-        const PAD  = 2
+        const PAD = 2
         const boxW = Math.ceil(charW) + PAD * 2
         const boxH = 9   // 5px font + top/bottom padding
 

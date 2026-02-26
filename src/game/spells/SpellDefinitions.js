@@ -54,7 +54,7 @@ export const BLOOD_LANCE = {
   id: 'blood_lance',
   name: 'Blood Lance',
   baseDamage: 40,
-  manaCost: 10,
+  manaCost: 0,
   hpCost: 5,
   castTime: 0.4,
   cooldown: 2,
@@ -184,4 +184,49 @@ export const ARCANE_BEAM = {
   color: '#aa44ff',
   isUltimate: false,
   tags: ['buff', 'damage'],
+}
+
+// ── Ultimates ────────────────────────────────────────────────────────────────
+
+export const METEOR = {
+  id: 'meteor',
+  name: 'Meteor',
+  baseDamage: 60,
+  manaCost: 60,
+  castTime: 0,
+  cooldown: 15,
+  behaviorType: 'aoe',
+  aoeRadius: 40,
+  meteorDelay: 1.5,     // seconds before impact
+  color: '#ff4400',
+  isUltimate: true,
+  tags: ['aoe', 'damage'],
+}
+
+export const ARCANE_OVERLOAD = {
+  id: 'arcane_overload',
+  name: 'Arcane Overload',
+  baseDamage: 0,
+  manaCost: 50,
+  castTime: 0,
+  cooldown: 12,
+  behaviorType: 'buff',
+  damageBonus: 0.5,     // +50% all spell damage
+  duration: 5,
+  color: '#ff44ff',
+  isUltimate: true,
+  tags: ['buff'],
+}
+
+export const TEMPORAL_RESET = {
+  id: 'temporal_reset',
+  name: 'Temporal Reset',
+  baseDamage: 0,
+  manaCost: 40,
+  castTime: 0.2,
+  cooldown: 15,
+  behaviorType: 'instant',
+  color: '#88ffff',
+  isUltimate: true,
+  tags: ['instant', 'utility'],
 }
