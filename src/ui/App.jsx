@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { GameCanvas } from './GameCanvas.jsx'
 import { DeckForge } from './DeckForge.jsx'
+import { Settings } from './Settings.jsx'
 import { DEFAULT_DECK } from '../config/playerDeck.js'
+import { loadKeybindings, saveKeybindings } from '../config/keybindings.js'
 
 const STORAGE_KEY = 'spellforge-deck'
 
@@ -18,18 +20,16 @@ function loadDeck() {
 export function App() {
   const [screen, setScreen] = useState('forge')
   const [playerDeck, setPlayerDeck] = useState(() => loadDeck())
+  const [keybindings, setKeybindings] = useState(() => loadKeybindings())
 
   function handleDeckChange(newDeck) {
     setPlayerDeck(newDeck)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newDeck))
   }
 
-  function handleEnterMatch() {
-    setScreen('game')
-  }
-
-  function handleMatchOver() {
-    setScreen('forge')
+  function handleKeybindingsChange(newBindings) {
+    setKeybindings(newBindings)
+    saveKeybindings(newBindings)
   }
 
   return (
@@ -47,13 +47,22 @@ export function App() {
         <DeckForge
           deck={playerDeck}
           onDeckChange={handleDeckChange}
-          onEnterMatch={handleEnterMatch}
+          onEnterMatch={() => setScreen('game')}
+          onOpenSettings={() => setScreen('settings')}
+        />
+      )}
+      {screen === 'settings' && (
+        <Settings
+          keybindings={keybindings}
+          onSave={handleKeybindingsChange}
+          onBack={() => setScreen('forge')}
         />
       )}
       {screen === 'game' && (
         <GameCanvas
           deck={playerDeck}
-          onMatchOver={handleMatchOver}
+          keybindings={keybindings}
+          onMatchOver={() => setScreen('forge')}
         />
       )}
     </div>

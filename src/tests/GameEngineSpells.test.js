@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GameEngine } from '../game/GameEngine.js'
 import { SpellInstance } from '../game/spells/SpellInstance.js'
 import {
@@ -533,28 +533,29 @@ describe('GameEngine — _tickActiveBurns edge cases', () => {
 })
 
 describe('GameEngine — Split modifier', () => {
-  it('fires 2 projectiles instead of 1', () => {
+  it('fires 3 projectiles instead of 1', () => {
     const { engine } = makeEngine()
     const spell = new SpellInstance(FIREBALL, [SPLIT])
     const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
-    expect(projs).toHaveLength(2)
+    expect(projs).toHaveLength(3)
   })
 
-  it('split projectiles travel in different directions (±15°)', () => {
+  it('split projectiles travel in different directions (-15°/0°/+15°)', () => {
     const { engine } = makeEngine()
     const spell = new SpellInstance(FIREBALL, [SPLIT])
-    const [p0, p1] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
-    // cos(±15°) is identical so vx matches; sin(±15°) differs in sign so vy is opposite
-    expect(p0.velocity.y).not.toBeCloseTo(p1.velocity.y)
+    const [p0, p1, p2] = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
+    // center projectile has vy=0, outer two have opposite vy signs
+    expect(p1.velocity.y).toBeCloseTo(0)
+    expect(p0.velocity.y).not.toBeCloseTo(p2.velocity.y)
   })
 
-  it('split projectile damage is 60% of base', () => {
+  it('split projectile damage is 40% of base', () => {
     const { engine } = makeEngine()
     const spell = new SpellInstance(FIREBALL, [SPLIT])
     const projs = engine._spawnSpellProjectile({ spell, direction: { x: 1, y: 0 } }, engine.player)
-    // SPLIT sets computedDamage = round(20 * 0.6) = 12
+    // SPLIT sets computedDamage = round(20 * 0.4) = 8
     for (const p of projs) {
-      expect(p.damage).toBe(12)
+      expect(p.damage).toBe(8)
     }
   })
 })
@@ -562,60 +563,63 @@ describe('GameEngine — Split modifier', () => {
 // ─── Arcane Beam ─────────────────────────────────────────────────────────────
 
 describe('GameEngine — _handleArcaneBeam', () => {
-  function findBeamSlot(engine) {
-    return engine.player.deck.findIndex(s => s?.definition.id === 'arcane_beam')
+  // arcane_beam is not in DEFAULT_DECK — inject it into slot 0 for each test
+  const BEAM_SLOT = 0
+
+  function makeBeamEngine() {
+    const { engine, ctx } = makeEngine()
+    engine.player.deck[BEAM_SLOT] = new SpellInstance(ARCANE_BEAM)
+    return { engine, ctx }
   }
 
   it('arcaneBeamActive is false initially', () => {
-    const { engine } = makeEngine()
+    const { engine } = makeBeamEngine()
     expect(engine.arcaneBeamActive).toBe(false)
   })
 
   it('activates beam when arcane_beam slot key is held', () => {
-    const { engine } = makeEngine()
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     engine.update(0.016)
     expect(engine.arcaneBeamActive).toBe(true)
   })
 
   it('puts player in CastState while channeling', () => {
-    const { engine } = makeEngine()
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     engine.update(0.016)
     expect(engine.player.stateMachine.name).toBe('cast')
   })
 
   it('drains player mana while channeling', () => {
-    const { engine } = makeEngine()
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     const manaBefore = engine.player.mana
     engine.update(0.5)
     expect(engine.player.mana).toBeLessThan(manaBefore)
   })
 
   it('deactivates beam when key is released', () => {
-    const { engine } = makeEngine()
-    const slot = findBeamSlot(engine)
-    engine.player.input.spellSlots[slot] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     engine.update(0.016)
-    engine.player.input.spellSlots[slot] = false
+    engine.player.input.spellSlots[BEAM_SLOT] = false
     engine.update(0.016)
     expect(engine.arcaneBeamActive).toBe(false)
   })
 
   it('resets player to idle when beam is released from CastState', () => {
-    const { engine } = makeEngine()
-    const slot = findBeamSlot(engine)
-    engine.player.input.spellSlots[slot] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     engine.update(0.016)
-    engine.player.input.spellSlots[slot] = false
+    engine.player.input.spellSlots[BEAM_SLOT] = false
     engine.update(0.016)
     expect(engine.player.stateMachine.name).toBe('idle')
   })
 
   it('deactivates beam when player dies while channeling', () => {
-    const { engine } = makeEngine()
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    const { engine } = makeBeamEngine()
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     engine.update(0.016)
     expect(engine.arcaneBeamActive).toBe(true)
     engine.player.takeDamage(999)
@@ -624,7 +628,7 @@ describe('GameEngine — _handleArcaneBeam', () => {
   })
 
   it('damages bot when bot is within beam range and in the beam direction', () => {
-    const { engine } = makeEngine()
+    const { engine } = makeBeamEngine()
     // Place bot 40px to the right of player (within 150px beam range)
     engine.player.position.x = 80
     engine.player.position.y = 90
@@ -632,19 +636,19 @@ describe('GameEngine — _handleArcaneBeam', () => {
     engine.bot.position.y = 90
     // Mouse points rightward (same direction as bot)
     engine.inputHandler.mouse = { x: 200, y: 90 }
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     const hpBefore = engine.bot.hp
     engine.update(0.5)
     expect(engine.bot.hp).toBeLessThan(hpBefore)
   })
 
   it('does not damage a dead bot', () => {
-    const { engine } = makeEngine()
+    const { engine } = makeBeamEngine()
     engine.bot.takeDamage(999)
     engine.player.position.x = 80
     engine.bot.position.x = 120
     engine.inputHandler.mouse = { x: 200, y: 90 }
-    engine.player.input.spellSlots[findBeamSlot(engine)] = true
+    engine.player.input.spellSlots[BEAM_SLOT] = true
     const botHp = engine.bot.hp
     engine.update(0.5)
     expect(engine.bot.hp).toBe(botHp)

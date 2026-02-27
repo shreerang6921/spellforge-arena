@@ -295,12 +295,12 @@ describe('GameEngine — deck HUD (_drawDeck)', () => {
     expect(() => engine.render(ctx)).not.toThrow()
   })
 
-  it('calls fillText 8 times for slot numbers', () => {
+  it('does not call fillText for slot numbers (rendered as React overlay)', () => {
     const { canvas, ctx } = makeMockCanvas()
     const engine = new GameEngine(canvas)
     engine.init()
     engine.render(ctx)
-    expect(ctx.fillText).toHaveBeenCalledTimes(8)
+    expect(ctx.fillText).not.toHaveBeenCalled()
   })
 
   it('draws extra fillRect calls when a spell is in the deck', () => {

@@ -179,9 +179,9 @@ describe('SPLIT — apply', () => {
         expect(inst.splitEnabled).toBe(true)
     })
 
-    it('reduces computedDamage by 40% (60% of base)', () => {
+    it('reduces computedDamage to 40% of base', () => {
         const inst = new SpellInstance(damageProjDef, [SPLIT])
-        expect(inst.computedDamage).toBe(Math.round(20 * 0.6))
+        expect(inst.computedDamage).toBe(Math.round(20 * 0.4))
     })
 })
 
