@@ -561,3 +561,78 @@ describe('Player — slow effect (applySlowEffect)', () => {
     expect(p.speedMultiplier).toBeCloseTo(0.85)
   })
 })
+
+describe('Player — applyArcaneOverload', () => {
+  it('sets arcaneOverloadTimer to the given duration', () => {
+    const p = makePlayer()
+    p.applyArcaneOverload(5)
+    expect(p.arcaneOverloadTimer).toBe(5)
+  })
+
+  it('arcaneOverloadActive returns true when timer > 0', () => {
+    const p = makePlayer()
+    p.applyArcaneOverload(5)
+    expect(p.arcaneOverloadActive).toBe(true)
+  })
+
+  it('arcaneOverloadActive returns false when timer is 0 (initial state)', () => {
+    const p = makePlayer()
+    expect(p.arcaneOverloadActive).toBe(false)
+  })
+
+  it('arcaneOverloadTimer decrements over time', () => {
+    const p = makePlayer()
+    p.applyArcaneOverload(3)
+    p.update(1)
+    expect(p.arcaneOverloadTimer).toBeCloseTo(2)
+  })
+
+  it('arcaneOverloadTimer does not go below 0', () => {
+    const p = makePlayer()
+    p.applyArcaneOverload(1)
+    p.update(10)
+    expect(p.arcaneOverloadTimer).toBe(0)
+  })
+
+  it('arcaneOverloadActive becomes false after timer expires', () => {
+    const p = makePlayer()
+    p.applyArcaneOverload(0.5)
+    p.update(1)
+    expect(p.arcaneOverloadActive).toBe(false)
+  })
+})
+
+describe('Player — startDash', () => {
+  it('sets dashTimer to given duration', () => {
+    const p = makePlayer()
+    p.startDash(0.15)
+    expect(p.dashTimer).toBe(0.15)
+  })
+
+  it('transitions player to DashState', () => {
+    const p = makePlayer()
+    p.startDash(0.15)
+    expect(p.stateMachine.name).toBe('dash')
+  })
+
+  it('returns to idle state after dashTimer expires', () => {
+    const p = makePlayer()
+    p.startDash(0.15)
+    p.update(0.2)
+    expect(p.stateMachine.name).toBe('idle')
+  })
+
+  it('dashTimer decrements over time', () => {
+    const p = makePlayer()
+    p.startDash(0.15)
+    p.update(0.05)
+    expect(p.dashTimer).toBeCloseTo(0.1)
+  })
+
+  it('dashTimer does not go below 0', () => {
+    const p = makePlayer()
+    p.startDash(0.15)
+    p.update(10)
+    expect(p.dashTimer).toBe(0)
+  })
+})
