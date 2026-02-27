@@ -51,12 +51,12 @@ export const HEAVY_IMPACT = {
 export const SPLIT = {
     id: 'split',
     name: 'Split',
-    effect: 'Fires 2 projectiles at ±15° at 60% damage each',
-    validOn(def) { return def.behaviorType === 'projectile' },
+    effect: 'Fires 3 projectiles at -15°/0°/+15° at 40% damage each',
+    validOn(def) { return def.behaviorType === 'projectile' && !(def.projectileCount > 1) },
     apply(inst) {
         // Mark on the instance — GameEngine reads these flags when spawning
         inst.splitEnabled = true
-        inst.computedDamage = Math.round(inst.computedDamage * 0.6)
+        inst.computedDamage = Math.round(inst.computedDamage * 0.4)
     },
 }
 

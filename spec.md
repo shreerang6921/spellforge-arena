@@ -167,6 +167,7 @@ exit()
 {
   id: string,
   name: string,
+  description: string,    // plain-text summary shown in Deck Forge and in-game panel
   baseDamage: number,
   manaCost: number,
   castTime: number,       // seconds (0 = instant)
@@ -418,14 +419,14 @@ Max 2 modifiers per spell. No duplicate modifiers on one spell.
 | Empower | +20% damage | — | — | — |
 | Quick Cast | -30% cast time | +10% | — | — |
 | Heavy Impact | +40% damage | +40% | +20% | If base cooldown = 0, uses DEFAULT_COOLDOWN (1s) as base |
-| Split | Projectile type only: fires 2 projectiles at ±15° at 60% damage each | — | — | Not valid on non-projectile spells |
+| Split | Fires 3 projectiles at -15°/0°/+15° at 40% damage each | — | — | Projectile spells only; not valid on spells that already fire multiple projectiles (e.g. Arcane Burst) |
 | Extended Duration | +50% duration | — | — | Valid only on timed spells |
 | Lingering Burn | Adds DoT: 5 dmg/sec for 2s after hit | — | — | Damage spells only |
 | Mana Efficient | -20% mana cost | — | — | -10% damage |
 | Lifesteal | Heal caster for 15% of damage dealt | — | — | Damage spells only |
 
 ### Modifier Validity
-- `Split` — projectile behavior type only
+- `Split` — single-projectile spells only (behaviorType = 'projectile' and projectileCount <= 1)
 - `Extended Duration` — spells with duration (aoe, buff, channel)
 - `Lingering Burn` — damage spells only
 - `Lifesteal` — damage spells only
@@ -544,21 +545,56 @@ No modifier usage on bot spells.
 
 ## 20. Deck Forge (React UI)
 
-- Accessible **only outside of a match** (pre-match lobby)
-- Deck locked once match starts
+- Accessible **only outside of a match** (pre-match screen)
+- Deck locked once match starts; returns to Deck Forge when match ends
 - Player configures one deck of **8 spells** (7 normal + 1 ultimate)
 - For each spell slot, player can attach up to **2 modifiers** (valid modifiers only)
 - Invalid modifier combos are blocked with a UI error message
-- Deck saved to config/state before entering match
+- Deck persisted in `localStorage` (key: `spellforge-deck`) — survives page refresh
 
-**UI Structure:**
+**App flow:**
 ```
-DeckForge
-├── SpellPool (all available spells listed)
-├── DeckSlots (8 slots)
-│   └── each slot: SpellCard + ModifierSlots (0–2)
-└── SaveDeck / EnterMatch button
+App (screen: 'forge' | 'game')
+├── 'forge' → DeckForge(deck, onDeckChange, onEnterMatch)
+└── 'game'  → GameCanvas(deck, onMatchOver)
+                └── match ends → back to 'forge'
 ```
+
+**Deck state format** (serializable, stored in localStorage):
+```js
+[
+  { spellId: 'fireball', modifierIds: ['empower'] },
+  { spellId: 'ice_shard', modifierIds: [] },
+  null,   // empty slot
+  ...     // 8 entries total
+]
+```
+
+**Conversion:** `deckToSpellInstances(deck)` in `src/config/playerDeck.js` converts to `SpellInstance[]`. Unknown spellIds return `null`; unknown modifierIds are skipped. `GameEngine.init(deck)` falls back to `DEFAULT_DECK` if any slot is null.
+
+**UI layout:**
+```
+┌──────────────────────────────────────────────────────┐
+│                   ✦ DECK FORGE ✦                     │
+├─────────────────────┬────────────────────────────────┤
+│  SPELL POOL         │  YOUR DECK  (7 normal + 1 ult) │
+│                     │                                │
+│  ● Fireball         │  1. ██ Fireball  [Empower]     │
+│  ● Ice Shard        │  2. ██ Ice Shard               │
+│  ...                │  ...                           │
+│  ── ULTIMATES ──    │  8. ██ Meteor                  │
+│  ◆ Meteor           │                                │
+│  ...                ├────────────────────────────────┤
+│                     │  MODIFIERS — Fireball          │
+│  ── INFO BOX ──     │  <spell description>           │
+│  <spell description>│  [Empower ✓]  +20% damage      │
+│  shown on select    │  [Split ✕]    not valid        │
+├─────────────────────┴────────────────────────────────┤
+│  ⚠ error message                  [ Enter Match → ] │
+└──────────────────────────────────────────────────────┘
+```
+
+**Enter Match** button is disabled until all 8 slots are filled correctly (slots 0–6 normal, slot 7 ultimate).
 
 ---
 
@@ -599,9 +635,9 @@ src/
 │   ├── DeckForge.jsx         // deck builder UI
 │   └── Settings.jsx          // keybinding config
 ├── config/
-│   ├── defaultDeck.js
+│   ├── playerDeck.js     // SPELL_BY_ID, MODIFIER_BY_ID, DEFAULT_DECK, deckToSpellInstances()
 │   ├── botDeck.js
-│   └── keybindings.js
+│   └── constants.js
 └── index.jsx
 ```
 
@@ -611,16 +647,20 @@ src/
 
 Two layers:
 
-**Canvas-rendered (basic, in-engine):**
+**Canvas-rendered (in-engine):**
 - Player HP bar (top-left of canvas)
 - Player Mana bar (top-left, below HP)
 - Bot HP bar (top-right of canvas)
-- Rendered directly in `GameEngine.render()` — no React needed
+- Spell slot color swatches + cooldown wipe overlay (bottom-center, slots 1–8)
+- Spell Echo active indicator (pink border on all slots)
+- Pending cast indicator (white border on casting slot)
 
-**React overlay (Phase 11):**
-- Match timer (top-center)
-- Spell slots 1–8 with cooldown overlay (bottom)
-- Full styled HUD wrapping the canvas element
+**React overlay (crisp HTML, avoids 3× upscale blur):**
+- Match timer (top-center) — red when ≤ 30s remaining
+- Key binding numbers 1–8 (bottom, over each slot) — black outline for readability on any background
+- Spell name tooltip (hover over slot)
+- Spell description panel (click slot to toggle — shows name + description above slot)
+- Match end overlay — winner, time remaining, "Back to Forge" button
 
 ---
 
@@ -638,8 +678,8 @@ Each phase must be **fully tested before the next phase begins**.
 | 6 | Ultimates (one at a time) | ✅ Complete |
 | 7 | Modifier system (apply to spells, test each modifier) | ✅ Complete |
 | 8 | Bot AI | ✅ Complete |
-| 9 | Match system: timer, win condition, match start/end flow | — |
-| 10 | React Deck Forge UI | — |
+| 9 | Match system: timer, win condition, match start/end flow | ✅ Complete |
+| 10 | React Deck Forge UI | ✅ Complete |
 | 11 | HUD + Settings (keybinding rebind) | — |
 
 ---

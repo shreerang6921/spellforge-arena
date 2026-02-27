@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameEngine } from '../game/GameEngine.js'
+import { deckToSpellInstances } from '../config/playerDeck.js'
 import { MATCH_DURATION } from '../config/constants.js'
 
 // Mirror of the deck slot layout from GameEngine._drawDeck
@@ -8,9 +9,9 @@ const RESOLUTION_H = 180
 const SLOT = 14
 const GAP = 2
 const SLOTS = 8
-const TOTAL_W = SLOTS * SLOT + (SLOTS - 1) * GAP        // 126
-const DECK_START_X = Math.floor((RESOLUTION_W - TOTAL_W) / 2) // 97
-const DECK_Y = RESOLUTION_H - SLOT - 2                  // 164
+const TOTAL_W = SLOTS * SLOT + (SLOTS - 1) * GAP
+const DECK_START_X = Math.floor((RESOLUTION_W - TOTAL_W) / 2)
+const DECK_Y = RESOLUTION_H - SLOT - 2
 
 function formatTime(seconds) {
   const s = Math.max(0, Math.ceil(seconds))
@@ -31,13 +32,14 @@ function winnerColor(winner) {
   return '#aaaaaa'
 }
 
-export function GameCanvas() {
+export function GameCanvas({ deck, onMatchOver }) {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
   const timerIntervalRef = useRef(null)
-  const [tooltip, setTooltip] = useState(null) // { name, x, y } in viewport px
+  const [tooltip, setTooltip] = useState(null)
+  const [spellPanel, setSpellPanel] = useState(null) // { name, description, slotIndex, cssX }
   const [timerDisplay, setTimerDisplay] = useState(MATCH_DURATION)
-  const [matchResult, setMatchResult] = useState(null) // { winner, timeLeft }
+  const [matchResult, setMatchResult] = useState(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -52,10 +54,10 @@ export function GameCanvas() {
       setMatchResult({ winner, timeLeft })
     }
 
-    engine.init()
+    const instances = deckToSpellInstances(deck)
+    engine.init(instances)
     engine.start()
 
-    // Poll timer every 500ms — seconds-level precision is enough for display
     timerIntervalRef.current = setInterval(() => {
       const t = engineRef.current?.match?.matchTimer ?? MATCH_DURATION
       setTimerDisplay(t)
@@ -65,18 +67,15 @@ export function GameCanvas() {
       engine.stop()
       clearInterval(timerIntervalRef.current)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleMouseMove(e) {
     const canvas = canvasRef.current
     const engine = engineRef.current
     if (!canvas || !engine?.player) return
-
     const rect = canvas.getBoundingClientRect()
-    // Map from CSS pixels → internal game coordinates
     const gx = (e.clientX - rect.left) * (RESOLUTION_W / rect.width)
     const gy = (e.clientY - rect.top)  * (RESOLUTION_H / rect.height)
-
     if (gy >= DECK_Y && gy < DECK_Y + SLOT) {
       for (let i = 0; i < SLOTS; i++) {
         const sx = DECK_START_X + i * (SLOT + GAP)
@@ -95,35 +94,38 @@ export function GameCanvas() {
 
   function handleMouseLeave() {
     setTooltip(null)
+    setSpellPanel(null)
   }
 
-  function handleRestart() {
+  function handleCanvasClick(e) {
     const canvas = canvasRef.current
-    if (!canvas) return
-
-    // Tear down old engine
-    engineRef.current?.stop()
-
-    // Fresh engine
-    const engine = new GameEngine(canvas)
-    engineRef.current = engine
-
-    engine.onMatchOver = (winner, timeLeft) => {
-      clearInterval(timerIntervalRef.current)
-      timerIntervalRef.current = null
-      setMatchResult({ winner, timeLeft })
+    const engine = engineRef.current
+    if (!canvas || !engine?.player) return
+    const rect = canvas.getBoundingClientRect()
+    const gx = (e.clientX - rect.left) * (RESOLUTION_W / rect.width)
+    const gy = (e.clientY - rect.top)  * (RESOLUTION_H / rect.height)
+    if (gy >= DECK_Y && gy < DECK_Y + SLOT) {
+      for (let i = 0; i < SLOTS; i++) {
+        const sx = DECK_START_X + i * (SLOT + GAP)
+        if (gx >= sx && gx < sx + SLOT) {
+          const spell = engine.player.deck[i]
+          if (spell) {
+            // Toggle off if same slot clicked again
+            if (spellPanel?.slotIndex === i) { setSpellPanel(null); return }
+            const cssX = (sx + SLOT / 2) * (rect.width / RESOLUTION_W) + rect.left - canvas.getBoundingClientRect().left
+            setSpellPanel({
+              name: spell.definition.name,
+              description: spell.definition.description,
+              slotIndex: i,
+              cssX,
+            })
+            return
+          }
+          break
+        }
+      }
     }
-
-    engine.init()
-    engine.start()
-
-    timerIntervalRef.current = setInterval(() => {
-      const t = engineRef.current?.match?.matchTimer ?? MATCH_DURATION
-      setTimerDisplay(t)
-    }, 500)
-
-    setMatchResult(null)
-    setTimerDisplay(MATCH_DURATION)
+    setSpellPanel(null)
   }
 
   return (
@@ -149,6 +151,7 @@ export function GameCanvas() {
         ref={canvasRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onClick={handleCanvasClick}
         style={{
           display: 'block',
           imageRendering: 'pixelated',
@@ -157,6 +160,28 @@ export function GameCanvas() {
           background: '#000',
         }}
       />
+      {/* Key binding numbers — React overlay for crisp text instead of blurry canvas text */}
+      {!matchResult && Array.from({ length: SLOTS }, (_, i) => {
+        const cssX = (DECK_START_X + i * (SLOT + GAP) + 1) * (960 / RESOLUTION_W)
+        const cssY = (DECK_Y + 1) * (540 / RESOLUTION_H)
+        const hasSpell = deck?.[i] != null
+        return (
+          <div key={i} style={{
+            position: 'absolute',
+            left: `${cssX}px`,
+            top: `${cssY}px`,
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            lineHeight: 1,
+            color: hasSpell ? '#fff' : '#888',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}>
+            {i + 1}
+          </div>
+        )
+      })}
       {matchResult && (
         <div style={{
           position: 'absolute',
@@ -188,7 +213,7 @@ export function GameCanvas() {
             Time remaining: {formatTime(matchResult.timeLeft)}
           </div>
           <button
-            onClick={handleRestart}
+            onClick={onMatchOver}
             style={{
               marginTop: '8px',
               fontFamily: 'monospace',
@@ -201,8 +226,29 @@ export function GameCanvas() {
               letterSpacing: '1px',
             }}
           >
-            Play Again
+            Back to Forge
           </button>
+        </div>
+      )}
+      {spellPanel && !matchResult && (
+        <div style={{
+          position: 'absolute',
+          bottom: `${(SLOT + 6) * (540 / RESOLUTION_H)}px`,
+          left: `${Math.min(spellPanel.cssX - 80, 960 - 200)}px`,
+          width: '200px',
+          background: '#111',
+          border: '1px solid #555',
+          fontFamily: 'monospace',
+          padding: '8px 10px',
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>
+            {spellPanel.name}
+          </div>
+          <div style={{ fontSize: '11px', color: '#999', lineHeight: '1.5' }}>
+            {spellPanel.description ?? ''}
+          </div>
         </div>
       )}
       {tooltip && (
