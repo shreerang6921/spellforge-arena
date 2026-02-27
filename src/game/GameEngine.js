@@ -12,9 +12,10 @@ import {
   HEALING_PULSE, MANA_SURGE, SPELL_ECHO, ARCANE_BEAM,
   METEOR, ARCANE_OVERLOAD, TEMPORAL_RESET,
 } from './spells/SpellDefinitions.js'
-import { EMPOWER } from './spells/ModifierDefinitions.js'
+import { SPLIT } from './spells/ModifierDefinitions.js'
 import { BotAI } from './BotAI.js'
 import { createBotDeck } from '../config/botDeck.js'
+import { Match } from './Match.js'
 
 // TODO: Add GameEngine integration tests for spell interactions (echo, overload, lifesteal, lingering burn, etc.)
 export class GameEngine {
@@ -39,6 +40,9 @@ export class GameEngine {
 
     this.arcaneBeamActive = false
     this.arcaneBeamDir = null
+
+    this.match = null
+    this.onMatchOver = null
   }
 
   init() {
@@ -46,8 +50,8 @@ export class GameEngine {
     this.bot = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true })
 
     // ── Test deck (Phases 5–7) — replaced by Deck Forge in Phase 10 ──────────
-    // Slot 1: Fireball + Empower    → modifier test: +20% dmg = 24
-    this.player.deck[0] = new SpellInstance(FIREBALL, [EMPOWER])
+    // Slot 1: Fireball + Split      → fires 2 projectiles at ±15°, 60% dmg each
+    this.player.deck[0] = new SpellInstance(FIREBALL, [SPLIT])
     // Slot 2: Ice Shard             → slow on hit (1.5s, 15% speed reduction)
     this.player.deck[1] = new SpellInstance(ICE_SHARD)
     // Slot 3: Arcane Beam           → hold key to channel hitscan beam
@@ -69,6 +73,8 @@ export class GameEngine {
     this.botAI = new BotAI(this.bot, this.player)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
+
+    this.match = new Match([this.player, this.bot])
   }
 
   start() {
@@ -102,6 +108,17 @@ export class GameEngine {
   }
 
   update(dt) {
+    // Tick match state (timer + win condition)
+    if (this.match) {
+      this.match.update(dt)
+      if (this.match.matchOver) {
+        this.onMatchOver?.(this.match.winner, this.match.matchTimer)
+        this.arcaneBeamActive = false
+        this.stop()
+        return
+      }
+    }
+
     this.player.update(dt)
     this.bot.update(dt)
 
@@ -641,36 +658,6 @@ export class GameEngine {
       ctx.fillText(String(i + 1), x + 1, y + 5)
     }
 
-    // Tooltip for hovered slot — drawn last so it appears on top
-    const mouse = this.inputHandler?.mouse
-    if (mouse) {
-      for (let i = 0; i < SLOTS; i++) {
-        const sx = startX + i * (SLOT + GAP)
-        if (mouse.x < sx || mouse.x >= sx + SLOT) continue
-        if (mouse.y < y || mouse.y >= y + SLOT) continue
-        const spell = this.player.deck[i]
-        if (!spell) break
-
-        const name = spell.definition.name
-        ctx.font = '5px monospace'
-        // measureText may not exist in test environments — fall back to char-width estimate
-        const charW = ctx.measureText ? ctx.measureText(name).width : name.length * 3.5
-        const PAD = 2
-        const boxW = Math.ceil(charW) + PAD * 2
-        const boxH = 9   // 5px font + top/bottom padding
-
-        // Center above the slot, clamped so it never overflows the canvas
-        let tx = sx + Math.floor((SLOT - boxW) / 2)
-        tx = Math.max(0, Math.min(RESOLUTION_W - boxW, tx))
-        const ty = y - boxH - 2
-
-        ctx.fillStyle = '#111111'
-        ctx.fillRect(tx, ty, boxW, boxH)
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(name, tx + PAD, ty + boxH - PAD)
-        break
-      }
-    }
   }
 
   _drawBar(ctx, x, y, w, h, ratio, fill, bg) {

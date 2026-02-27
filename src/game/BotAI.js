@@ -2,6 +2,7 @@ import { PLAYER } from '../config/constants.js'
 
 const DECISION_INTERVAL = 0.5  // seconds between AI ticks
 
+// TODO: Try using locally running models
 /**
  * Bot AI — spec §19.
  *
