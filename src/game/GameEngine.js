@@ -42,6 +42,7 @@ export class GameEngine {
     this.arcaneBeamDir = null
 
     this.match = null
+    this.onMatchOver = null
   }
 
   init() {
@@ -111,6 +112,7 @@ export class GameEngine {
     if (this.match) {
       this.match.update(dt)
       if (this.match.matchOver) {
+        this.onMatchOver?.(this.match.winner, this.match.matchTimer)
         this.arcaneBeamActive = false
         this.stop()
         return
