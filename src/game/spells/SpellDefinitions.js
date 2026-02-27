@@ -1,6 +1,7 @@
 export const FIREBALL = {
   id: 'fireball',
   name: 'Fireball',
+  description: 'Lob a slow but powerful fire bolt. 20 dmg, 15 mana, 0.3s cast.',
   baseDamage: 20,
   manaCost: 15,
   castTime: 0.3,
@@ -17,6 +18,7 @@ export const FIREBALL = {
 export const ARCANE_BURST = {
   id: 'arcane_burst',
   name: 'Arcane Burst',
+  description: 'Shotgun blast of 3 arcane bolts in a 30° spread. 12 dmg each, 20 mana.',
   baseDamage: 12,
   manaCost: 20,
   castTime: 0.2,
@@ -35,6 +37,7 @@ export const ARCANE_BURST = {
 export const ICE_SHARD = {
   id: 'ice_shard',
   name: 'Ice Shard',
+  description: 'Fast icy projectile that slows the target by 85% for 1.5s. 15 dmg, 12 mana.',
   baseDamage: 15,
   manaCost: 12,
   castTime: 0.2,
@@ -53,6 +56,7 @@ export const ICE_SHARD = {
 export const BLOOD_LANCE = {
   id: 'blood_lance',
   name: 'Blood Lance',
+  description: 'High-damage piercing lance. Costs 5 HP to cast in addition to 10 mana. 40 dmg.',
   baseDamage: 40,
   manaCost: 10,
   hpCost: 5,
@@ -71,6 +75,7 @@ export const BLOOD_LANCE = {
 export const GROUND_FLAME = {
   id: 'ground_flame',
   name: 'Ground Flame',
+  description: 'Places a burning AoE zone at your feet. 5 dmg every 0.5s for 3s. 25 mana.',
   baseDamage: 5,
   manaCost: 25,
   castTime: 0,
@@ -87,6 +92,7 @@ export const GROUND_FLAME = {
 export const DASH = {
   id: 'dash',
   name: 'Dash',
+  description: 'Quickly dash 50px in your movement direction. 15 mana, 3s cooldown.',
   baseDamage: 0,
   manaCost: 15,
   castTime: 0,
@@ -102,6 +108,7 @@ export const DASH = {
 export const BLINK_STRIKE = {
   id: 'blink_strike',
   name: 'Blink Strike',
+  description: 'Teleport to cursor (max 80px) and deal 25 dmg in a 20px AoE on landing. 30 mana.',
   baseDamage: 25,
   manaCost: 30,
   castTime: 0,
@@ -117,6 +124,7 @@ export const BLINK_STRIKE = {
 export const PHASE_WALK = {
   id: 'phase_walk',
   name: 'Phase Walk',
+  description: 'Boost movement speed by 50% for 3 seconds. 20 mana, 5s cooldown.',
   baseDamage: 0,
   manaCost: 20,
   castTime: 0,
@@ -132,6 +140,7 @@ export const PHASE_WALK = {
 export const HEALING_PULSE = {
   id: 'healing_pulse',
   name: 'Healing Pulse',
+  description: 'Instantly restore 25 HP. 30 mana, 4s cooldown.',
   baseDamage: 0,
   manaCost: 30,
   castTime: 0.3,
@@ -146,6 +155,7 @@ export const HEALING_PULSE = {
 export const MANA_SURGE = {
   id: 'mana_surge',
   name: 'Mana Surge',
+  description: 'Instantly restore 40 mana. Free to cast, 5s cooldown.',
   baseDamage: 0,
   manaCost: 0,
   castTime: 0.2,
@@ -161,6 +171,7 @@ export const MANA_SURGE = {
 export const SPELL_ECHO = {
   id: 'spell_echo',
   name: 'Spell Echo',
+  description: 'Your next spell fires twice — once at full power, once at 50% damage with no modifiers. 20 mana.',
   baseDamage: 0,
   manaCost: 20,
   castTime: 0.1,
@@ -171,9 +182,11 @@ export const SPELL_ECHO = {
   tags: ['buff', 'utility'],
 }
 
+// TODO: Explore whether its a good idea to allow beam follow the cursor
 export const ARCANE_BEAM = {
   id: 'arcane_beam',
   name: 'Arcane Beam',
+  description: 'Hold to channel a hitscan beam. 12 dmg/s, drains 15 mana/s. Stops when mana runs out.',
   baseDamage: 0,
   manaCost: 0,
   castTime: 0,
@@ -192,6 +205,7 @@ export const ARCANE_BEAM = {
 export const METEOR = {
   id: 'meteor',
   name: 'Meteor',
+  description: 'Call down a massive meteor at cursor position after 1.5s delay. 60 dmg in a 40px AoE. 60 mana.',
   baseDamage: 60,
   manaCost: 60,
   castTime: 0,
@@ -207,6 +221,7 @@ export const METEOR = {
 export const ARCANE_OVERLOAD = {
   id: 'arcane_overload',
   name: 'Arcane Overload',
+  description: 'Overcharge your magic — all spells deal +50% damage for 5 seconds. 50 mana.',
   baseDamage: 0,
   manaCost: 50,
   castTime: 0,
@@ -222,6 +237,7 @@ export const ARCANE_OVERLOAD = {
 export const TEMPORAL_RESET = {
   id: 'temporal_reset',
   name: 'Temporal Reset',
+  description: 'Instantly reset all spell cooldowns to zero. 40 mana.',
   baseDamage: 0,
   manaCost: 40,
   castTime: 0.2,

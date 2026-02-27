@@ -5,17 +5,10 @@ import { Projectile } from './Projectile.js'
 import { AoEZone } from './AoEZone.js'
 import { runCollision } from './CollisionSystem.js'
 import { computeAimDirection } from './AimAssist.js'
-import { SpellInstance } from './spells/SpellInstance.js'
-import {
-  FIREBALL, ICE_SHARD, ARCANE_BURST, BLOOD_LANCE,
-  GROUND_FLAME, DASH, BLINK_STRIKE, PHASE_WALK,
-  HEALING_PULSE, MANA_SURGE, SPELL_ECHO, ARCANE_BEAM,
-  METEOR, ARCANE_OVERLOAD, TEMPORAL_RESET,
-} from './spells/SpellDefinitions.js'
-import { SPLIT } from './spells/ModifierDefinitions.js'
 import { BotAI } from './BotAI.js'
 import { createBotDeck } from '../config/botDeck.js'
 import { Match } from './Match.js'
+import { deckToSpellInstances, DEFAULT_DECK } from '../config/playerDeck.js'
 
 // TODO: Add GameEngine integration tests for spell interactions (echo, overload, lifesteal, lingering burn, etc.)
 export class GameEngine {
@@ -45,35 +38,25 @@ export class GameEngine {
     this.onMatchOver = null
   }
 
-  init() {
+  init(deck = null) {
     this.player = new Player({ x: 80, y: 90, color: COLORS.PLAYER1, isBot: false })
     this.bot = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true })
 
-    // ── Test deck (Phases 5–7) — replaced by Deck Forge in Phase 10 ──────────
-    // Slot 1: Fireball + Split      → fires 2 projectiles at ±15°, 60% dmg each
-    this.player.deck[0] = new SpellInstance(FIREBALL, [SPLIT])
-    // Slot 2: Ice Shard             → slow on hit (1.5s, 15% speed reduction)
-    this.player.deck[1] = new SpellInstance(ICE_SHARD)
-    // Slot 3: Arcane Beam           → hold key to channel hitscan beam
-    this.player.deck[2] = new SpellInstance(ARCANE_BEAM)
-    // Slot 4: Blood Lance           → HP-only cost (5 HP, 0 mana)
-    this.player.deck[3] = new SpellInstance(BLOOD_LANCE)
-    // Slot 5: Spell Echo            → buff: next spell fires twice (100% + 50%)
-    this.player.deck[4] = new SpellInstance(SPELL_ECHO)
-    // Slot 6: Temporal Reset (ult)  → wipes all non-ultimate cooldowns instantly
-    this.player.deck[5] = new SpellInstance(TEMPORAL_RESET)
-    // Slot 7: Phase Walk            → speed buff + cyan tint for 3s
-    this.player.deck[6] = new SpellInstance(PHASE_WALK)
-    // Slot 8: Meteor (ult)          → 1.5s delay, expanding ring warning, 60 dmg
-    this.player.deck[7] = new SpellInstance(METEOR)
-    // ─────────────────────────────────────────────────────────────────────────
+    // Player deck: use provided deck, fall back to default if any slot is null/missing
+    const instances = deck ?? deckToSpellInstances(DEFAULT_DECK)
+    const hasNulls = instances.some(s => s == null)
+    if (hasNulls) {
+      console.warn('GameEngine.init: deck contains null slots, falling back to DEFAULT_DECK')
+      this.player.deck = deckToSpellInstances(DEFAULT_DECK)
+    } else {
+      this.player.deck = instances
+    }
 
     // Bot deck + AI (Phase 8)
     this.bot.deck = createBotDeck()
     this.botAI = new BotAI(this.bot, this.player)
 
     this.inputHandler = new InputHandler(this.canvas, this.player)
-
     this.match = new Match([this.player, this.bot])
   }
 
@@ -287,7 +270,7 @@ export class GameEngine {
     let angleOffsets
     if (spell.splitEnabled) {
       const splitRad = (15 * Math.PI) / 180
-      angleOffsets = [-splitRad, splitRad]
+      angleOffsets = [-splitRad, 0, splitRad]
     } else {
       const count = def.projectileCount ?? 1
       const spreadRad = ((def.spreadAngle ?? 0) * Math.PI) / 180
@@ -653,9 +636,7 @@ export class GameEngine {
         }
       }
 
-      ctx.fillStyle = spell ? '#fff' : '#555'
-      ctx.font = '5px monospace'
-      ctx.fillText(String(i + 1), x + 1, y + 5)
+      // Key numbers rendered as React overlay in GameCanvas for crisp text
     }
 
   }
