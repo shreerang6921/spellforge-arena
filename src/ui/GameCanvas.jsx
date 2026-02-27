@@ -13,6 +13,19 @@ const TOTAL_W = SLOTS * SLOT + (SLOTS - 1) * GAP
 const DECK_START_X = Math.floor((RESOLUTION_W - TOTAL_W) / 2)
 const DECK_Y = RESOLUTION_H - SLOT - 2
 
+function formatSpellKey(keybindings, slotIndex) {
+  const code = keybindings?.[`spell${slotIndex + 1}`]
+  if (!code) return String(slotIndex + 1)  // fallback to number
+  if (code.startsWith('Key'))   return code.slice(3)
+  if (code.startsWith('Digit')) return code.slice(5)
+  if (code === 'ArrowUp')    return '↑'
+  if (code === 'ArrowDown')  return '↓'
+  if (code === 'ArrowLeft')  return '←'
+  if (code === 'ArrowRight') return '→'
+  if (code === 'Space')      return 'Spc'
+  return code.length > 3 ? code.slice(0, 3) : code
+}
+
 function formatTime(seconds) {
   const s = Math.max(0, Math.ceil(seconds))
   const m = Math.floor(s / 60)
@@ -32,7 +45,7 @@ function winnerColor(winner) {
   return '#aaaaaa'
 }
 
-export function GameCanvas({ deck, onMatchOver }) {
+export function GameCanvas({ deck, keybindings, onMatchOver }) {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -55,7 +68,7 @@ export function GameCanvas({ deck, onMatchOver }) {
     }
 
     const instances = deckToSpellInstances(deck)
-    engine.init(instances)
+    engine.init(instances, keybindings ?? undefined)
     engine.start()
 
     timerIntervalRef.current = setInterval(() => {
@@ -178,7 +191,7 @@ export function GameCanvas({ deck, onMatchOver }) {
             pointerEvents: 'none',
             userSelect: 'none',
           }}>
-            {i + 1}
+            {formatSpellKey(keybindings, i)}
           </div>
         )
       })}

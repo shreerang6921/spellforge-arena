@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { InputHandler } from '../game/InputHandler.js'
 import { Player } from '../game/Player.js'
+import { DEFAULT_KEYBINDINGS } from '../config/keybindings.js'
 
 function makePlayer() {
   return new Player({ x: 160, y: 90, color: '#fff' })
@@ -202,6 +203,28 @@ describe('InputHandler — custom keybindings', () => {
     expect(player.input.up).toBe(true)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }))  // default, should not work
     // Note: up is already true, test that ArrowUp triggered it (not KeyW — KeyW maps to nothing)
+    handler.destroy()
+  })
+})
+
+describe('InputHandler — custom spell keybindings', () => {
+  it('uses custom spell key when provided', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const custom = { ...DEFAULT_KEYBINDINGS, spell1: 'KeyQ' }
+    const handler = new InputHandler(canvas, player, custom)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ' }))
+    expect(player.input.spellSlots[0]).toBe(true)
+    handler.destroy()
+  })
+
+  it('default Digit1 no longer triggers slot 0 when rebound', () => {
+    const player = makePlayer()
+    const canvas = makeCanvas()
+    const custom = { ...DEFAULT_KEYBINDINGS, spell1: 'KeyQ' }
+    const handler = new InputHandler(canvas, player, custom)
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }))
+    expect(player.input.spellSlots[0]).toBe(false)
     handler.destroy()
   })
 })

@@ -17,7 +17,7 @@ function isDeckComplete(deck) {
   return true
 }
 
-export function DeckForge({ deck, onDeckChange, onEnterMatch }) {
+export function DeckForge({ deck, onDeckChange, onEnterMatch, onOpenSettings }) {
   const [selectedPoolSpell, setSelectedPoolSpell] = useState(null)
   const [selectedDeckSlot, setSelectedDeckSlot] = useState(null)
   const [validationError, setValidationError] = useState(null)
@@ -363,22 +363,38 @@ export function DeckForge({ deck, onDeckChange, onEnterMatch }) {
         <div style={{ fontSize: '12px', color: '#f66' }}>
           {validationError ?? ''}
         </div>
-        <button
-          onClick={complete ? onEnterMatch : undefined}
-          disabled={!complete}
-          style={{
-            fontFamily: 'monospace',
-            fontSize: '14px',
-            padding: '8px 24px',
-            letterSpacing: '1px',
-            cursor: complete ? 'pointer' : 'not-allowed',
-            background: complete ? '#1a3a1a' : '#1a1a1a',
-            color: complete ? '#8f8' : '#555',
-            border: complete ? '1px solid #4a4' : '1px solid #333',
-          }}
-        >
-          Enter Match →
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            onClick={onOpenSettings}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              padding: '8px 20px',
+              background: '#222',
+              color: '#aaa',
+              border: '1px solid #444',
+              cursor: 'pointer',
+            }}
+          >
+            ⚙ Settings
+          </button>
+          <button
+            onClick={complete ? onEnterMatch : undefined}
+            disabled={!complete}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              padding: '8px 24px',
+              letterSpacing: '1px',
+              cursor: complete ? 'pointer' : 'not-allowed',
+              background: complete ? '#1a3a1a' : '#1a1a1a',
+              color: complete ? '#8f8' : '#555',
+              border: complete ? '1px solid #4a4' : '1px solid #333',
+            }}
+          >
+            Enter Match →
+          </button>
+        </div>
       </div>
     </div>
   )

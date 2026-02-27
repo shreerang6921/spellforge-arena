@@ -1,20 +1,26 @@
 import { RESOLUTION_W, RESOLUTION_H } from '../config/constants.js'
-
-const SPELL_KEYS = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8']
+import { DEFAULT_KEYBINDINGS } from '../config/keybindings.js'
 
 export class InputHandler {
-  static SPELL_KEYS = SPELL_KEYS
   constructor(canvas, player, keybindings) {
     this.canvas = canvas
     this.player = player
-    this.mouse = { x: 0, y: 0 }   // in game coords
+    this.mouse = { x: 0, y: 0 }
+
+    const kb = { ...DEFAULT_KEYBINDINGS, ...keybindings }
 
     this.keys = {
-      up:    keybindings?.up    ?? 'KeyW',
-      down:  keybindings?.down  ?? 'KeyS',
-      left:  keybindings?.left  ?? 'KeyA',
-      right: keybindings?.right ?? 'KeyD',
+      up:    kb.up,
+      down:  kb.down,
+      left:  kb.left,
+      right: kb.right,
     }
+
+    // Build spell slot key array from keybindings (slot 0 = spell1, etc.)
+    this.spellKeys = [
+      kb.spell1, kb.spell2, kb.spell3, kb.spell4,
+      kb.spell5, kb.spell6, kb.spell7, kb.spell8,
+    ]
 
     this._onKeyDown   = this._onKeyDown.bind(this)
     this._onKeyUp     = this._onKeyUp.bind(this)
@@ -29,13 +35,8 @@ export class InputHandler {
     canvas.addEventListener('mouseup',   this._onMouseUp)
   }
 
-  _onKeyDown(e) {
-    this._setKey(e.code, true)
-  }
-
-  _onKeyUp(e) {
-    this._setKey(e.code, false)
-  }
+  _onKeyDown(e) { this._setKey(e.code, true) }
+  _onKeyUp(e)   { this._setKey(e.code, false) }
 
   _setKey(code, value) {
     if (code === this.keys.up)    this.player.input.up    = value
@@ -43,13 +44,12 @@ export class InputHandler {
     if (code === this.keys.left)  this.player.input.left  = value
     if (code === this.keys.right) this.player.input.right = value
 
-    const slot = InputHandler.SPELL_KEYS.indexOf(code)
+    const slot = this.spellKeys.indexOf(code)
     if (slot !== -1) this.player.input.spellSlots[slot] = value
   }
 
   _onMouseMove(e) {
     const rect = this.canvas.getBoundingClientRect()
-    // Map screen coords → internal game coords
     const scaleX = RESOLUTION_W / rect.width
     const scaleY = RESOLUTION_H / rect.height
     this.mouse.x = Math.round((e.clientX - rect.left) * scaleX)

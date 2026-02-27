@@ -38,7 +38,7 @@ export class GameEngine {
     this.onMatchOver = null
   }
 
-  init(deck = null) {
+  init(deck = null, keybindings = null) {
     this.player = new Player({ x: 80, y: 90, color: COLORS.PLAYER1, isBot: false })
     this.bot = new Player({ x: 240, y: 90, color: COLORS.PLAYER2, isBot: true })
 
@@ -56,7 +56,7 @@ export class GameEngine {
     this.bot.deck = createBotDeck()
     this.botAI = new BotAI(this.bot, this.player)
 
-    this.inputHandler = new InputHandler(this.canvas, this.player)
+    this.inputHandler = new InputHandler(this.canvas, this.player, keybindings ?? undefined)
     this.match = new Match([this.player, this.bot])
   }
 
