@@ -580,19 +580,16 @@ export class GameEngine {
 
   _drawArcaneBeam(ctx) {
     if (!this.arcaneBeamActive || !this.arcaneBeamDir) return
-    // Draw beam as a narrow rect — avoids ctx.beginPath/lineTo which aren't mocked in tests
     const range = 150
     const x1 = this.player.position.x
     const y1 = this.player.position.y
-    const x2 = x1 + this.arcaneBeamDir.x * range
-    const y2 = y1 + this.arcaneBeamDir.y * range
-    // Simple thin horizontal/vertical rect approximation using fillRect
-    const midX = Math.round((x1 + x2) / 2)
-    const midY = Math.round((y1 + y2) / 2)
-    const len = Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+    const angle = Math.atan2(this.arcaneBeamDir.y, this.arcaneBeamDir.x)
+    ctx.save()
+    ctx.translate(Math.round(x1), Math.round(y1))
+    ctx.rotate(angle)
     ctx.fillStyle = '#aa44ff'
-    ctx.fillRect(Math.round(x1), Math.round(y1), Math.max(len, 1), 2)
-    void midX; void midY  // suppress unused warning
+    ctx.fillRect(0, -1, range, 2)
+    ctx.restore()
   }
 
   _drawDeck(ctx) {
