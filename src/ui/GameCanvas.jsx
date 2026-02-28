@@ -45,7 +45,7 @@ function winnerColor(winner) {
   return '#aaaaaa'
 }
 
-export function GameCanvas({ deck, keybindings, onMatchOver }) {
+export function GameCanvas({ deck, keybindings, onMatchOver, onRestart }) {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -225,22 +225,39 @@ export function GameCanvas({ deck, keybindings, onMatchOver }) {
           }}>
             Time remaining: {formatTime(matchResult.timeLeft)}
           </div>
-          <button
-            onClick={onMatchOver}
-            style={{
-              marginTop: '8px',
-              fontFamily: 'monospace',
-              fontSize: '16px',
-              padding: '10px 28px',
-              background: '#222',
-              color: '#fff',
-              border: '2px solid #555',
-              cursor: 'pointer',
-              letterSpacing: '1px',
-            }}
-          >
-            Back to Forge
-          </button>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+            <button
+              onClick={onRestart}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '16px',
+                padding: '10px 28px',
+                background: '#e8a020',
+                color: '#000',
+                border: 'none',
+                cursor: 'pointer',
+                letterSpacing: '1px',
+                fontWeight: 'bold',
+              }}
+            >
+              RESTART
+            </button>
+            <button
+              onClick={onMatchOver}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '16px',
+                padding: '10px 28px',
+                background: '#222',
+                color: '#fff',
+                border: '2px solid #555',
+                cursor: 'pointer',
+                letterSpacing: '1px',
+              }}
+            >
+              ← HOME
+            </button>
+          </div>
         </div>
       )}
       {spellPanel && !matchResult && (

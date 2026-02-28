@@ -25,6 +25,7 @@ export function App() {
   const [deckForgeReturn, setDeckForgeReturn] = useState('home')
   const [playerDeck, setPlayerDeck] = useState(() => loadDeck())
   const [keybindings, setKeybindings] = useState(() => loadKeybindings())
+  const [gameKey, setGameKey] = useState(0)
 
   function handleDeckChange(newDeck) {
     setPlayerDeck(newDeck)
@@ -117,9 +118,11 @@ export function App() {
       )}
       {screen === 'game' && (
         <GameCanvas
+          key={gameKey}
           deck={playerDeck}
           keybindings={keybindings}
           onMatchOver={() => setScreen('home')}
+          onRestart={() => setGameKey(k => k + 1)}
         />
       )}
     </div>
