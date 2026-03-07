@@ -17,7 +17,7 @@ function isDeckComplete(deck) {
   return true
 }
 
-export function DeckForge({ deck, onDeckChange, onEnterMatch, onOpenSettings }) {
+export function DeckForge({ deck, onDeckChange, onSave, saveLabel = 'SAVE', onBack }) {
   const [selectedPoolSpell, setSelectedPoolSpell] = useState(null)
   const [selectedDeckSlot, setSelectedDeckSlot] = useState(null)
   const [validationError, setValidationError] = useState(null)
@@ -364,22 +364,20 @@ export function DeckForge({ deck, onDeckChange, onEnterMatch, onOpenSettings }) 
           {validationError ?? ''}
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                fontFamily: 'monospace', fontSize: '14px', padding: '8px 16px',
+                letterSpacing: '1px', cursor: 'pointer',
+                background: 'transparent', color: '#666', border: '1px solid #333',
+              }}
+            >
+              ← BACK
+            </button>
+          )}
           <button
-            onClick={onOpenSettings}
-            style={{
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              padding: '8px 20px',
-              background: '#222',
-              color: '#aaa',
-              border: '1px solid #444',
-              cursor: 'pointer',
-            }}
-          >
-            ⚙ Settings
-          </button>
-          <button
-            onClick={complete ? onEnterMatch : undefined}
+            onClick={onSave}
             disabled={!complete}
             style={{
               fontFamily: 'monospace',
@@ -392,7 +390,7 @@ export function DeckForge({ deck, onDeckChange, onEnterMatch, onOpenSettings }) 
               border: complete ? '1px solid #4a4' : '1px solid #333',
             }}
           >
-            Enter Match →
+            {saveLabel}
           </button>
         </div>
       </div>

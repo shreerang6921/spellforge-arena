@@ -20,3 +20,6 @@
 
 ## Package Manager
 - Always use `yarn`, never `npm`
+
+## Git
+- Never try to commit yourself

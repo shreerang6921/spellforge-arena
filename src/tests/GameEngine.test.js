@@ -13,6 +13,10 @@ function makeMockCtx() {
     fillRect:   vi.fn(),
     strokeRect: vi.fn(),
     fillText:   vi.fn(),
+    save:       vi.fn(),
+    restore:    vi.fn(),
+    translate:  vi.fn(),
+    rotate:     vi.fn(),
   }
 }
 

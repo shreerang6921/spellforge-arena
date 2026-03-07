@@ -22,6 +22,10 @@ function makeMockCtx() {
     strokeRect: vi.fn(),
     fillText:   vi.fn(),
     measureText: vi.fn((str) => ({ width: str.length * 3.5 })),
+    save:       vi.fn(),
+    restore:    vi.fn(),
+    translate:  vi.fn(),
+    rotate:     vi.fn(),
   }
 }
 
