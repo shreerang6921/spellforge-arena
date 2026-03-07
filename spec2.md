@@ -46,7 +46,10 @@ Home
 │                     └── Edit    → Deck Forge → Deck Preview
 │
 ├── Deck Forge   ──→ (edit freely, Save → Home)
-└── Settings     ──→ (keybinding rebind, Back → Home)
+├── Settings     ──→ (keybinding rebind, Back → Home)
+└── Game         ──→ End Screen overlay
+                       ├── Restart → remounts game fresh (same deck/mode)
+                       └── ← Home  → Home screen
 ```
 
 ### Home Screen Layout
@@ -65,8 +68,9 @@ Home
 
 ### Deck Preview Screen
 - Read-only view of all 8 deck slots (spell name, color swatch, attached modifiers)
-- Two buttons: `Continue →` and `Edit Deck`
+- Three buttons: `Continue →` (primary), `Edit Deck`, `← Home`
 - `Edit Deck` navigates to Deck Forge; Deck Forge shows `Save & Continue →` (returns to Deck Preview) when entered from this flow vs `Save` (returns to Home) when entered standalone
+- Deck Forge also shows a `← Back` button when entered from Deck Preview (returns to Deck Preview without saving)
 - `mode` context is preserved through Deck Forge and back
 
 ---
@@ -368,7 +372,7 @@ src/
 │   ├── Home.jsx              // NEW
 │   ├── DeckPreview.jsx       // NEW
 │   ├── Lobby.jsx             // NEW
-│   ├── GameCanvas.jsx        // updated — online vs bot mode
+│   ├── GameCanvas.jsx        // updated — online vs bot mode; end screen has Restart + ← Home buttons
 │   ├── Renderer.js           // NEW — extracted from GameEngine
 │   ├── DeckForge.jsx
 │   └── Settings.jsx
@@ -399,7 +403,7 @@ Each phase must pass 90% test coverage before the next begins.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Home screen, Deck Preview, updated app routing | — |
+| 1 | Home screen, Deck Preview, updated app routing | ✅ Complete (589 tests) |
 | 2 | Engine/Renderer split — `GameEngine.js` pure, `Renderer.js` extracted; all existing tests pass | — |
 | 3 | Server infrastructure — Node.js + ws, room lifecycle, WebSocket protocol | — |
 | 4 | Online 1v1 — client inputs, server state sync at 20hz, client interpolation | — |
