@@ -1,6 +1,5 @@
-import { RESOLUTION_W, RESOLUTION_H, COLORS, ARENA } from '../config/constants.js'
+import { ARENA, COLORS } from '../config/constants.js'
 import { Player } from './Player.js'
-import { InputHandler } from './InputHandler.js'
 import { Projectile } from './Projectile.js'
 import { AoEZone } from './AoEZone.js'
 import { runCollision } from './CollisionSystem.js'
@@ -12,17 +11,7 @@ import { deckToSpellInstances, DEFAULT_DECK } from '../config/playerDeck.js'
 
 // TODO: Add GameEngine integration tests for spell interactions (echo, overload, lifesteal, lingering burn, etc.)
 export class GameEngine {
-  constructor(canvas) {
-    this.canvas = canvas
-    this.ctx = canvas.getContext('2d')
-
-    canvas.width = RESOLUTION_W
-    canvas.height = RESOLUTION_H
-
-    this.running = false
-    this._lastTime = 0
-    this._rafId = null
-
+  constructor() {
     this.player = null
     this.bot = null
     this.botAI = null
@@ -56,38 +45,7 @@ export class GameEngine {
     this.bot.deck = createBotDeck()
     this.botAI = new BotAI(this.bot, this.player)
 
-    this.inputHandler = new InputHandler(this.canvas, this.player, keybindings ?? undefined)
     this.match = new Match([this.player, this.bot])
-  }
-
-  start() {
-    if (this.running) return
-    this.running = true
-    this._lastTime = performance.now()
-    this._loop(this._lastTime)
-  }
-
-  stop() {
-    this.running = false
-    if (this._rafId !== null) {
-      cancelAnimationFrame(this._rafId)
-      this._rafId = null
-    }
-    if (this.inputHandler) {
-      this.inputHandler.destroy()
-    }
-  }
-
-  _loop(timestamp) {
-    if (!this.running) return
-
-    const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05) // cap at 50ms
-    this._lastTime = timestamp
-
-    this.update(dt)
-    this.render(this.ctx)
-
-    this._rafId = requestAnimationFrame((ts) => this._loop(ts))
   }
 
   update(dt) {
@@ -97,7 +55,6 @@ export class GameEngine {
       if (this.match.matchOver) {
         this.onMatchOver?.(this.match.winner, this.match.matchTimer)
         this.arcaneBeamActive = false
-        this.stop()
         return
       }
     }
@@ -108,32 +65,33 @@ export class GameEngine {
     // Track current frame's aim direction so we can refresh it at cast completion
     let currentPlayerDir = { x: 1, y: 0 }
 
+    // Compute aim direction (uses inputHandler.mouse when available, else default right)
     if (this.inputHandler) {
-      const dir = computeAimDirection(
+      currentPlayerDir = computeAimDirection(
         this.player.position,
         this.inputHandler.mouse,
         this.bot.isDead ? null : this.bot.position
       )
-      currentPlayerDir = dir
+    }
 
-      // Basic attack
-      if (this.player.input.attack) {
-        const proj = this.player.tryBasicAttack(dir)
-        if (proj) this.projectiles.push(proj)
-      }
+    // Process player input (works whether inputHandler is set or input is driven directly)
+    // Basic attack
+    if (this.player.input.attack) {
+      const proj = this.player.tryBasicAttack(currentPlayerDir)
+      if (proj) this.projectiles.push(proj)
+    }
 
-      // Arcane Beam — channeled, handled separately before normal spell slots
-      this._handleArcaneBeam(dt)
+    // Arcane Beam — channeled, handled separately before normal spell slots
+    this._handleArcaneBeam(dt)
 
-      // Regular spell slots — skip Arcane Beam slots (handled above)
-      if (!this.player.pendingCast) {
-        for (let i = 0; i < this.player.input.spellSlots.length; i++) {
-          if (this.player.input.spellSlots[i]) {
-            const spell = this.player.deck[i]
-            if (spell?.definition.id === 'arcane_beam') break
-            this.player.castSpell(i, dir)
-            break
-          }
+    // Regular spell slots — skip Arcane Beam slots (handled above)
+    if (!this.player.pendingCast) {
+      for (let i = 0; i < this.player.input.spellSlots.length; i++) {
+        if (this.player.input.spellSlots[i]) {
+          const spell = this.player.deck[i]
+          if (spell?.definition.id === 'arcane_beam') break
+          this.player.castSpell(i, currentPlayerDir)
+          break
         }
       }
     }
@@ -487,161 +445,4 @@ export class GameEngine {
     }
   }
 
-  // ─── Rendering ──────────────────────────────────────────────────────────────
-
-  render(ctx) {
-    this._drawArena(ctx)
-    for (const zone of this.aoeZones) this._drawAoEZone(ctx, zone)
-    for (const m of this.pendingMeteors) this._drawMeteorWarning(ctx, m)
-    this._drawPlayer(ctx, this.player)
-    this._drawPlayer(ctx, this.bot)
-    for (const proj of this.projectiles) this._drawProjectile(ctx, proj)
-    this._drawArcaneBeam(ctx)
-    this._drawHUD(ctx)
-    this._drawDeck(ctx)
-  }
-
-  _drawArena(ctx) {
-    ctx.fillStyle = COLORS.ARENA_BG
-    ctx.fillRect(0, 0, RESOLUTION_W, RESOLUTION_H)
-
-    ctx.strokeStyle = COLORS.ARENA_BORDER
-    ctx.lineWidth = 1
-    ctx.strokeRect(
-      ARENA.LEFT,
-      ARENA.TOP,
-      ARENA.RIGHT - ARENA.LEFT,
-      ARENA.BOTTOM - ARENA.TOP
-    )
-  }
-
-  _drawPlayer(ctx, player) {
-    const half = player.size / 2
-    const x = Math.round(player.position.x - half)
-    const y = Math.round(player.position.y - half)
-
-    ctx.fillStyle = player.isDead ? '#555' : player.color
-    ctx.fillRect(x, y, player.size, player.size)
-
-    // Phase Walk tint (semi-transparent cyan overlay)
-    if (player.phaseWalkTimer > 0) {
-      ctx.fillStyle = '#66ffff'
-      ctx.fillRect(x - 1, y - 1, player.size + 2, player.size + 2)
-    }
-
-    // Arcane Overload glow (magenta outline)
-    if (player.arcaneOverloadActive) {
-      ctx.strokeStyle = '#ff44ff'
-      ctx.lineWidth = 1
-      ctx.strokeRect(x - 1, y - 1, player.size + 2, player.size + 2)
-    }
-  }
-
-  _drawHUD(ctx) {
-    this._drawBar(ctx, 2, 2, 60, 4, this.player.hp / this.player.maxHp, COLORS.HP_BAR, COLORS.HP_BG)
-    this._drawBar(ctx, 2, 8, 60, 4, this.player.mana / this.player.maxMana, COLORS.MANA_BAR, COLORS.MANA_BG)
-    this._drawBar(ctx, 258, 2, 60, 4, this.bot.hp / this.bot.maxHp, COLORS.HP_BAR, COLORS.HP_BG)
-    this._drawBar(ctx, 258, 8, 60, 4, this.bot.mana / this.bot.maxMana, COLORS.MANA_BAR, COLORS.MANA_BG)
-  }
-
-  _drawProjectile(ctx, proj) {
-    ctx.fillStyle = proj.color
-    const x = Math.round(proj.position.x - proj.size.w / 2)
-    const y = Math.round(proj.position.y - proj.size.h / 2)
-    ctx.fillRect(x, y, proj.size.w, proj.size.h)
-  }
-
-  _drawAoEZone(ctx, zone) {
-    ctx.fillStyle = zone.color
-    // Draw as a square (programmer art); arc requires ctx.arc which may not exist in tests
-    const r = zone.radius
-    ctx.fillRect(
-      Math.round(zone.position.x - r),
-      Math.round(zone.position.y - r),
-      r * 2,
-      r * 2
-    )
-  }
-
-  _drawMeteorWarning(ctx, m) {
-    // Draw an expanding ring that fills to full radius as the meteor falls
-    const progress = 1 - (m.delay / m.totalDelay)   // 0 → 1 as delay counts down
-    const r = Math.round(m.radius * progress)
-    if (r < 1) return
-    ctx.strokeStyle = m.color
-    ctx.lineWidth = 1
-    ctx.strokeRect(Math.round(m.x - r), Math.round(m.y - r), r * 2, r * 2)
-    // Inner flash as it's about to hit
-    if (progress > 0.75) {
-      ctx.fillStyle = `rgba(255,68,0,${(progress - 0.75) * 2})`
-      ctx.fillRect(Math.round(m.x - r), Math.round(m.y - r), r * 2, r * 2)
-    }
-  }
-
-  _drawArcaneBeam(ctx) {
-    if (!this.arcaneBeamActive || !this.arcaneBeamDir) return
-    const range = 150
-    const x1 = this.player.position.x
-    const y1 = this.player.position.y
-    const angle = Math.atan2(this.arcaneBeamDir.y, this.arcaneBeamDir.x)
-    ctx.save()
-    ctx.translate(Math.round(x1), Math.round(y1))
-    ctx.rotate(angle)
-    ctx.fillStyle = '#aa44ff'
-    ctx.fillRect(0, -1, range, 2)
-    ctx.restore()
-  }
-
-  _drawDeck(ctx) {
-    const SLOT = 14
-    const GAP = 2
-    const SLOTS = 8
-    const totalW = SLOTS * SLOT + (SLOTS - 1) * GAP
-    const startX = Math.floor((RESOLUTION_W - totalW) / 2)
-    const y = RESOLUTION_H - SLOT - 2
-
-    for (let i = 0; i < SLOTS; i++) {
-      const x = startX + i * (SLOT + GAP)
-      const spell = this.player.deck[i]
-
-      ctx.fillStyle = '#1a1a1a'
-      ctx.fillRect(x, y, SLOT, SLOT)
-
-      if (spell) {
-        ctx.fillStyle = spell.definition.color
-        ctx.fillRect(x + 1, y + 1, SLOT - 2, SLOT - 2)
-
-        const cd = this.player.cooldowns[spell.definition.id] ?? 0
-        const total = spell.computedCooldown
-        if (cd > 0 && total > 0) {
-          const ratio = cd / total
-          ctx.fillStyle = 'rgba(0,0,0,0.75)'
-          ctx.fillRect(x + 1, y + 1, SLOT - 2, Math.round((SLOT - 2) * ratio))
-        }
-
-        if (this.player.pendingCast?.spell === spell) {
-          ctx.strokeStyle = '#ffffff'
-          ctx.lineWidth = 1
-          ctx.strokeRect(x + 0.5, y + 0.5, SLOT - 1, SLOT - 1)
-        }
-
-        // Spell Echo indicator (glowing border)
-        if (this.player.spellEchoActive) {
-          ctx.strokeStyle = '#ff88ff'
-          ctx.lineWidth = 1
-          ctx.strokeRect(x + 0.5, y + 0.5, SLOT - 1, SLOT - 1)
-        }
-      }
-
-      // Key numbers rendered as React overlay in GameCanvas for crisp text
-    }
-
-  }
-
-  _drawBar(ctx, x, y, w, h, ratio, fill, bg) {
-    ctx.fillStyle = bg
-    ctx.fillRect(x, y, w, h)
-    ctx.fillStyle = fill
-    ctx.fillRect(x, y, Math.round(w * Math.max(0, Math.min(1, ratio))), h)
-  }
 }
