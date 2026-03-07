@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameEngine } from '../game/GameEngine.js'
 import { deckToSpellInstances } from '../config/playerDeck.js'
-import { MATCH_DURATION } from '../config/constants.js'
+import { MATCH_DURATION, RESOLUTION_W, RESOLUTION_H } from '../config/constants.js'
+import { InputHandler } from '../game/InputHandler.js'
+import { Renderer } from './Renderer.js'
+import { GameLoop } from './GameLoop.js'
 
-// Mirror of the deck slot layout from GameEngine._drawDeck
-const RESOLUTION_W = 320
-const RESOLUTION_H = 180
+// Mirror of the deck slot layout from Renderer._drawDeck
 const SLOT = 14
 const GAP = 2
 const SLOTS = 8
@@ -58,18 +59,30 @@ export function GameCanvas({ deck, keybindings, onMatchOver, onRestart }) {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const engine = new GameEngine(canvas)
+    const ctx = canvas.getContext('2d')
+    canvas.width  = RESOLUTION_W
+    canvas.height = RESOLUTION_H
+
+    const engine = new GameEngine()
     engineRef.current = engine
+
+    const instances = deckToSpellInstances(deck)
+    engine.init(instances, keybindings ?? undefined)
+
+    const handler = new InputHandler(canvas, engine.player, keybindings ?? undefined)
+    engine.inputHandler = handler
+
+    const renderer = new Renderer()
+    const loop = new GameLoop(engine, renderer, ctx)
 
     engine.onMatchOver = (winner, timeLeft) => {
       clearInterval(timerIntervalRef.current)
       timerIntervalRef.current = null
       setMatchResult({ winner, timeLeft })
+      loop.stop()
     }
 
-    const instances = deckToSpellInstances(deck)
-    engine.init(instances, keybindings ?? undefined)
-    engine.start()
+    loop.start()
 
     timerIntervalRef.current = setInterval(() => {
       const t = engineRef.current?.match?.matchTimer ?? MATCH_DURATION
@@ -77,7 +90,8 @@ export function GameCanvas({ deck, keybindings, onMatchOver, onRestart }) {
     }, 500)
 
     return () => {
-      engine.stop()
+      loop.stop()
+      handler.destroy()
       clearInterval(timerIntervalRef.current)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

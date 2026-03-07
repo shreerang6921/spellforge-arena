@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { GameEngine } from '../game/GameEngine.js'
 import { SpellInstance } from '../game/spells/SpellInstance.js'
 import {
@@ -10,43 +10,12 @@ import {
 } from '../game/spells/SpellDefinitions.js'
 import { LIFESTEAL, LINGERING_BURN, SPLIT } from '../game/spells/ModifierDefinitions.js'
 
-// ─── Canvas / ctx helpers ────────────────────────────────────────────────────
-
-function makeMockCtx() {
-  return {
-    fillStyle: '',
-    strokeStyle: '',
-    lineWidth: 0,
-    font: '',
-    fillRect:   vi.fn(),
-    strokeRect: vi.fn(),
-    fillText:   vi.fn(),
-    measureText: vi.fn((str) => ({ width: str.length * 3.5 })),
-    save:       vi.fn(),
-    restore:    vi.fn(),
-    translate:  vi.fn(),
-    rotate:     vi.fn(),
-  }
-}
-
-function makeMockCanvas() {
-  const ctx = makeMockCtx()
-  const canvas = {
-    width:  0,
-    height: 0,
-    getContext: vi.fn(() => ctx),
-    addEventListener:    vi.fn(),
-    removeEventListener: vi.fn(),
-    getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 960, height: 540 })),
-  }
-  return { canvas, ctx }
-}
-
 function makeEngine() {
-  const { canvas, ctx } = makeMockCanvas()
-  const engine = new GameEngine(canvas)
+  const engine = new GameEngine()
   engine.init()
-  return { engine, ctx }
+  // Provide a minimal mock inputHandler so tests can set engine.inputHandler.mouse
+  engine.inputHandler = { mouse: { x: 160, y: 90 } }
+  return { engine }
 }
 
 // Directly invoke _processCompletedCast — avoids full update() timing complexity
@@ -571,9 +540,9 @@ describe('GameEngine — _handleArcaneBeam', () => {
   const BEAM_SLOT = 0
 
   function makeBeamEngine() {
-    const { engine, ctx } = makeEngine()
+    const { engine } = makeEngine()
     engine.player.deck[BEAM_SLOT] = new SpellInstance(ARCANE_BEAM)
-    return { engine, ctx }
+    return { engine }
   }
 
   it('arcaneBeamActive is false initially', () => {
@@ -659,101 +628,3 @@ describe('GameEngine — _handleArcaneBeam', () => {
   })
 })
 
-// ─── Rendering helpers ───────────────────────────────────────────────────────
-
-describe('GameEngine — _drawAoEZone rendering', () => {
-  it('calls fillRect when an AoEZone is active', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.aoeZones.push({ position: { x: 160, y: 90 }, radius: 20, color: '#ff0000', active: true })
-    const fillsBefore = ctx.fillRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(fillsBefore)
-  })
-})
-
-describe('GameEngine — _drawMeteorWarning rendering', () => {
-  it('calls strokeRect when a pending meteor exists', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.pendingMeteors.push({ x: 160, y: 90, delay: 0.5, totalDelay: 1.5, radius: 40, color: '#ff4400' })
-    const strokesBefore = ctx.strokeRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.strokeRect.mock.calls.length).toBeGreaterThan(strokesBefore)
-  })
-
-  it('draws inner flash fillRect when progress > 0.75', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    // delay=0.1, totalDelay=1.5 → progress ≈ 0.93 > 0.75
-    engine.pendingMeteors.push({ x: 160, y: 90, delay: 0.1, totalDelay: 1.5, radius: 40, color: '#ff4400' })
-    const fillsBefore = ctx.fillRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(fillsBefore)
-  })
-
-  it('skips rendering when progress is 0 (r < 1)', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    // delay == totalDelay → progress = 0 → r = 0 → early return
-    engine.pendingMeteors.push({ x: 160, y: 90, delay: 1.5, totalDelay: 1.5, radius: 40, color: '#ff4400' })
-    const strokesBefore = ctx.strokeRect.mock.calls.length
-    engine.render(ctx)
-    // strokeRect should NOT have been called for this meteor (r=0 → skip)
-    // NOTE: arena border still calls strokeRect once; we just check no extra calls beyond that
-    expect(ctx.strokeRect.mock.calls.length).toBe(strokesBefore + 1) // +1 for arena border only
-  })
-})
-
-describe('GameEngine — _drawArcaneBeam rendering', () => {
-  it('calls fillRect for beam when arcaneBeamActive is true', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.arcaneBeamActive = true
-    engine.arcaneBeamDir = { x: 1, y: 0 }
-    const fillsBefore = ctx.fillRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(fillsBefore)
-  })
-
-  it('does not throw when arcaneBeamActive is false', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.arcaneBeamActive = false
-    expect(() => engine.render(ctx)).not.toThrow()
-  })
-})
-
-// Tooltip is now a React HTML overlay in GameCanvas.jsx (crisp text at full browser resolution)
-// No canvas-side tooltip tests needed
-
-describe('GameEngine — _drawDeck Spell Echo indicator', () => {
-  it('draws extra strokeRect borders on deck when spellEchoActive', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.player.spellEchoActive = true
-    const strokesBefore = ctx.strokeRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.strokeRect.mock.calls.length).toBeGreaterThan(strokesBefore)
-  })
-})
-
-describe('GameEngine — _drawPlayer buff visuals', () => {
-  it('calls extra fillRect for Phase Walk tint overlay', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.player.phaseWalkTimer = 3
-    const fillsBefore = ctx.fillRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(fillsBefore)
-  })
-
-  it('calls extra strokeRect for Arcane Overload glow', () => {
-    const { engine } = makeEngine()
-    const ctx = makeMockCtx()
-    engine.player.arcaneOverloadTimer = 5
-    const strokesBefore = ctx.strokeRect.mock.calls.length
-    engine.render(ctx)
-    expect(ctx.strokeRect.mock.calls.length).toBeGreaterThan(strokesBefore)
-  })
-})
